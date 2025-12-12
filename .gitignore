@@ -1,0 +1,9 @@
+# Build artifacts
+*.o
+*.a
+*.dep
+*.deppo
+*.po
+
+# DRAMSim2 results
+DRAMSim2/results/
