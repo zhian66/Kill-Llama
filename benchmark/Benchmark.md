@@ -4,7 +4,7 @@
 
 | Suite | Source | Notes |
 |-------|--------|-------|
-| SPEC CPU 2017 | [spec.org](https://www.spec.org/cpu2017/) | License required |
+| SPEC CPU 2017 | [spec.org](https://www.spec.org/cpu2017/), [trace](https://dpc3.compas.cs.stonybrook.edu/?SW_IS) | License required |
 | STREAM | [GitHub](https://github.com/jeffhammond/STREAM) | Memory bandwidth |
 | GAP | [GitHub](https://github.com/sbeamer/gapbs) | Graph processing (Kronecker 2^20 vertices) |
 
