@@ -548,7 +548,8 @@ bool CommandQueue::pop(BusPacket **busPacket)
 	//if its an activate, add a tfaw counter
 	if ((*busPacket)->busPacketType==ACTIVATE)
 	{
-		tFAWCountdown[(*busPacket)->rank].push_back(tFAW);
+		if (!isSmartMRAM) 
+		  tFAWCountdown[(*busPacket)->rank].push_back(tFAW);
 	}
 
 	return true;

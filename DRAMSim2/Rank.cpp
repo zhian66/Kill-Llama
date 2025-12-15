@@ -133,7 +133,16 @@ void Rank::receiveFromBus(BusPacket *packet)
 
 		//update state table
 		bankStates[packet->bank].currentBankState = Idle;
-		bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + READ_AUTOPRE_DELAY);
+		// [SMART 修改]: Auto-Precharge 無延遲
+		if (isSmartMRAM)
+		{
+			bankStates[packet->bank].nextActivate = currentClockCycle; 
+		}
+		else
+		{
+			bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + READ_AUTOPRE_DELAY);
+		}
+		
 		for (size_t i=0;i<NUM_BANKS;i++)
 		{
 			//will set next read/write for all banks - including current (which shouldnt matter since its now idle)
@@ -188,7 +197,16 @@ void Rank::receiveFromBus(BusPacket *packet)
 
 		//update state table
 		bankStates[packet->bank].currentBankState = Idle;
-		bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + WRITE_AUTOPRE_DELAY);
+		// [SMART 修改]: Auto-Precharge 無延遲
+		if (isSmartMRAM)
+		{
+			bankStates[packet->bank].nextActivate = currentClockCycle;
+		}
+		else
+		{
+			bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + WRITE_AUTOPRE_DELAY);
+		}
+		
 		for (size_t i=0;i<NUM_BANKS;i++)
 		{
 			bankStates[i].nextWrite = max(bankStates[i].nextWrite, currentClockCycle + max(tCCD, BL/2));
@@ -203,32 +221,54 @@ void Rank::receiveFromBus(BusPacket *packet)
 		break;
 	case ACTIVATE:
 		//make sure activate is allowed
-		if (bankStates[packet->bank].currentBankState != Idle ||
-		        currentClockCycle < bankStates[packet->bank].nextActivate)
+		// [修正]: 將安全性檢查分流。
+		// SMART 模式下，允許對 RowActive 狀態發送 ACT (視為 Implicit Precharge)。
+		// DDR3 模式下，必須嚴格檢查 Idle 狀態。
+		// make sure activate is allowed
+		// [修改]: 註解掉或是放寬這個檢查，因為 SMART 架構可能允許快速狀態切換
+		if ( !isSmartMRAM && ( bankStates[packet->bank].currentBankState != Idle ||
+				currentClockCycle < bankStates[packet->bank].nextActivate) )
 		{
 			ERROR("== Error - Rank " << id << " received an ACT when not allowed");
 			packet->print();
 			bankStates[packet->bank].print();
 			exit(0);
 		}
+		
 
 		bankStates[packet->bank].currentBankState = RowActive;
-		bankStates[packet->bank].nextActivate = currentClockCycle + tRC;
-		bankStates[packet->bank].openRowAddress = packet->row;
+		//bankStates[packet->bank].nextActivate = currentClockCycle + tRC;
+		//bankStates[packet->bank].openRowAddress = packet->row;
 
 		//if AL is greater than one, then posted-cas is enabled - handle accordingly
-		if (AL>0)
+		if(isSmartMRAM)
 		{
-			bankStates[packet->bank].nextWrite = currentClockCycle + (tRCD-AL);
-			bankStates[packet->bank].nextRead = currentClockCycle + (tRCD-AL);
-		}
-		else
-		{
-			bankStates[packet->bank].nextWrite = currentClockCycle + (tRCD-AL);
-			bankStates[packet->bank].nextRead = currentClockCycle + (tRCD-AL);
+			// SMART: ACT 只是解碼，且無 Restore，所以下一次 ACT 的限制很短 (tRRD)
+			// 注意：這行修正了「Rank 期待 tRC 但 Controller 只等了 tRRD」的 Bug
+			bankStates[packet->bank].nextActivate = currentClockCycle + tRRD;
+			bankStates[packet->bank].openRowAddress = packet->row;
+			bankStates[packet->bank].nextWrite = currentClockCycle;
+			bankStates[packet->bank].nextRead = currentClockCycle;
+			bankStates[packet->bank].nextPrecharge = currentClockCycle;
 		}
 
-		bankStates[packet->bank].nextPrecharge = currentClockCycle + tRAS;
+		else {
+			bankStates[packet->bank].nextActivate = currentClockCycle + tRC;
+			bankStates[packet->bank].openRowAddress = packet->row;
+			if (AL>0)
+			{
+				bankStates[packet->bank].nextWrite = currentClockCycle + (tRCD-AL);
+				bankStates[packet->bank].nextRead = currentClockCycle + (tRCD-AL);
+			}
+			else
+			{
+				bankStates[packet->bank].nextWrite = currentClockCycle + (tRCD-AL);
+				bankStates[packet->bank].nextRead = currentClockCycle + (tRCD-AL);
+			}
+			bankStates[packet->bank].nextPrecharge = currentClockCycle + tRAS;
+
+		} // !isSmartMRAM
+
 		for (size_t i=0;i<NUM_BANKS;i++)
 		{
 			if (i != packet->bank)
@@ -239,6 +279,18 @@ void Rank::receiveFromBus(BusPacket *packet)
 		delete(packet); 
 		break;
 	case PRECHARGE:
+		// [SMART 修改]: 允許對 Idle Bank 進行 Precharge (視為 NOP)
+		if (isSmartMRAM)
+		{
+		// 如果已經是 Idle 或 PowerDown，直接忽略這次 Precharge，不報錯
+			if (bankStates[packet->bank].currentBankState == Idle || 
+			    bankStates[packet->bank].currentBankState == PowerDown)
+			{
+				delete(packet);
+				return;
+			}
+		}
+
 		//make sure precharge is allowed
 		if (bankStates[packet->bank].currentBankState != RowActive ||
 		        currentClockCycle < bankStates[packet->bank].nextPrecharge)
@@ -248,7 +300,16 @@ void Rank::receiveFromBus(BusPacket *packet)
 		}
 
 		bankStates[packet->bank].currentBankState = Idle;
-		bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + tRP);
+		// [SMART 修改]: 移除 tRP 限制
+		if (isSmartMRAM)
+		{
+			bankStates[packet->bank].nextActivate = currentClockCycle;
+		}
+		else
+		{
+			bankStates[packet->bank].nextActivate = max(bankStates[packet->bank].nextActivate, currentClockCycle + tRP);
+		}
+		
 		delete(packet); 
 		break;
 	case REFRESH:
@@ -347,11 +408,19 @@ void Rank::powerDown()
 	//perform checks
 	for (size_t i=0;i<NUM_BANKS;i++)
 	{
-		if (bankStates[i].currentBankState != Idle)
-		{
-			ERROR("== Error - Trying to power down rank " << id << " while not all banks are idle");
-			exit(0);
-		}
+		// [新增] 針對 SMART 的隱式關閉 (Implicit Close)
+        // 如果是 SMART 模式，允許將 Active 的 Bank 直接視為 Idle，模擬瞬間關閉
+        if (isSmartMRAM && bankStates[i].currentBankState == RowActive)
+        {
+            bankStates[i].currentBankState = Idle;
+        }
+
+        // 原本的檢查邏輯 (DDR3 會在這裡擋下 Active 的 Bank)
+        if (bankStates[i].currentBankState != Idle)
+        {
+            ERROR("== Error - Trying to power down rank " << id << " while not all banks are idle");
+            exit(0);
+        }
 
 		bankStates[i].nextPowerUp = currentClockCycle + tCKE;
 		bankStates[i].currentBankState = PowerDown;

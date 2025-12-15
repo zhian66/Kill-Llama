@@ -57,6 +57,7 @@ extern unsigned IDD6;
 extern unsigned IDD6L;
 extern unsigned IDD7;
 extern float Vdd; 
+extern bool isSmartMRAM;       // new added
 
 using namespace DRAMSim;
 
@@ -173,9 +174,21 @@ void MemoryController::update()
 						//only these commands have an implicit state change
 					case WRITE_P:
 					case READ_P:
-						bankStates[i][j].currentBankState = Precharging;
-						bankStates[i][j].lastCommand = PRECHARGE;
-						bankStates[i][j].stateChangeCountdown = tRP;
+					// [SMART 修改整合]: 處理 Auto-Precharge
+							// SMART 沒有 Restore 過程，因此 Auto-Precharge 是瞬間完成的，直接回到 Idle。
+						if (isSmartMRAM)
+							{
+							bankStates[i][j].currentBankState = Idle; // 直接 Idle
+							bankStates[i][j].lastCommand = PRECHARGE; // 更新狀態為已預充
+							bankStates[i][j].stateChangeCountdown = 0; // 無 tRP 延遲 paper's fig9
+						}
+						else
+						{
+							// [原本 DRAM 邏輯]
+							bankStates[i][j].currentBankState = Precharging;
+							bankStates[i][j].lastCommand = PRECHARGE;
+							bankStates[i][j].stateChangeCountdown = tRP;
+						}
 						break;
 
 					case REFRESH:
@@ -303,6 +316,13 @@ void MemoryController::update()
 			case READ_P:
 			case READ:
 				//add energy to account for total
+		// [SMART]: 如果是 ACTIVATE 後的第一次存取，計算 Sensing Energy (原本的 ActPre Energy)
+				if (isSmartMRAM && bankStates[rank][bank].lastCommand == ACTIVATE)
+				{
+					if (DEBUG_POWER) PRINT(" ++ SMART: Adding Lazy Sensing energy");
+					actpreEnergy[rank] += ((IDD0 * tRC) - ((IDD3N * tRAS) + (IDD2N * (tRC - tRAS)))) * NUM_DEVICES;
+				}
+
 				if (DEBUG_POWER)
 				{
 					PRINT(" ++ Adding Read energy to total energy");
@@ -414,41 +434,71 @@ void MemoryController::update()
 				}
 
 				break;
-			case ACTIVATE:
-				//add energy to account for total
-				if (DEBUG_POWER)
-				{
-					PRINT(" ++ Adding Activate and Precharge energy to total energy");
-				}
-				actpreEnergy[rank] += ((IDD0 * tRC) - ((IDD3N * tRAS) + (IDD2N * (tRC - tRAS)))) * NUM_DEVICES;
+				case ACTIVATE:
+						// [SMART 修改整合]: ACTIVATE 
+						// 1. 不計算 ActPre Energy (因為只是 Decoding，移到 Read/Write 算)。
+						// 2. 移除 tRCD (ACT->READ/WRITE) 和 tRAS (ACT->PRE) 的時序限制。
 
-				bankStates[rank][bank].currentBankState = RowActive;
-				bankStates[rank][bank].lastCommand = ACTIVATE;
-				bankStates[rank][bank].openRowAddress = poppedBusPacket->row;
-				bankStates[rank][bank].nextActivate = max(currentClockCycle + tRC, bankStates[rank][bank].nextActivate);
-				bankStates[rank][bank].nextPrecharge = max(currentClockCycle + tRAS, bankStates[rank][bank].nextPrecharge);
+						if (!isSmartMRAM) 
+						{
+							// [原本 DRAM]: 計算 ACT 功耗
+							if (DEBUG_POWER) PRINT(" ++ Adding Activate and Precharge energy to total energy");
+							actpreEnergy[rank] += ((IDD0 * tRC) - ((IDD3N * tRAS) + (IDD2N * (tRC - tRAS)))) * NUM_DEVICES;
+						}
 
-				//if we are using posted-CAS, the next column access can be sooner than normal operation
+						bankStates[rank][bank].currentBankState = RowActive;
+						bankStates[rank][bank].lastCommand = ACTIVATE;
+						bankStates[rank][bank].openRowAddress = poppedBusPacket->row;
 
-				bankStates[rank][bank].nextRead = max(currentClockCycle + (tRCD-AL), bankStates[rank][bank].nextRead);
-				bankStates[rank][bank].nextWrite = max(currentClockCycle + (tRCD-AL), bankStates[rank][bank].nextWrite);
+						if (isSmartMRAM)
+						{
+							// [SMART 時序]: 
+						    bankStates[rank][bank].nextActivate = max(currentClockCycle + tRRD, bankStates[rank][bank].nextActivate);
+							bankStates[rank][bank].nextPrecharge = currentClockCycle; 
+							
+							// [修正]: 使用 max() 保留匯流排的可用時間
+							bankStates[rank][bank].nextRead = max(currentClockCycle, bankStates[rank][bank].nextRead);
+							bankStates[rank][bank].nextWrite = max(currentClockCycle, bankStates[rank][bank].nextWrite);
+						}
+						else
+						{
+							// [原本 DRAM 時序]
+							bankStates[rank][bank].nextActivate = max(currentClockCycle + tRC, bankStates[rank][bank].nextActivate);
+							bankStates[rank][bank].nextPrecharge = max(currentClockCycle + tRAS, bankStates[rank][bank].nextPrecharge);
+							bankStates[rank][bank].nextRead = max(currentClockCycle + (tRCD-AL), bankStates[rank][bank].nextRead);
+							bankStates[rank][bank].nextWrite = max(currentClockCycle + (tRCD-AL), bankStates[rank][bank].nextWrite);
+						}
 
-				for (size_t i=0;i<NUM_BANKS;i++)
-				{
-					if (i!=poppedBusPacket->bank)
-					{
-						bankStates[rank][i].nextActivate = max(currentClockCycle + tRRD, bankStates[rank][i].nextActivate);
-					}
-				}
+						// 更新其他 Bank 的 tRRD (保持不變)
+						for (size_t i=0;i<NUM_BANKS;i++)
+						{
+							if (i!=poppedBusPacket->bank)
+							{
+								bankStates[rank][i].nextActivate = max(currentClockCycle + tRRD, bankStates[rank][i].nextActivate);
+							}
+						}	
+						break;
 
-				break;
-			case PRECHARGE:
-				bankStates[rank][bank].currentBankState = Precharging;
-				bankStates[rank][bank].lastCommand = PRECHARGE;
-				bankStates[rank][bank].stateChangeCountdown = tRP;
-				bankStates[rank][bank].nextActivate = max(currentClockCycle + tRP, bankStates[rank][bank].nextActivate);
-
-				break;
+					case PRECHARGE:
+						// [SMART 修改整合]: PRECHARGE
+						// STT-MRAM 無需回寫，Precharge 瞬間完成，無 tRP。
+						
+						if (isSmartMRAM)
+						{
+							bankStates[rank][bank].currentBankState = Idle; // 直接 Idle
+							bankStates[rank][bank].lastCommand = PRECHARGE;
+							bankStates[rank][bank].stateChangeCountdown = 0; // 0 延遲
+							bankStates[rank][bank].nextActivate = currentClockCycle; // 立即由 Idle 變 Active
+						}
+						else
+						{
+							// [原本 DRAM]
+							bankStates[rank][bank].currentBankState = Precharging;
+							bankStates[rank][bank].lastCommand = PRECHARGE;
+							bankStates[rank][bank].stateChangeCountdown = tRP;
+							bankStates[rank][bank].nextActivate = max(currentClockCycle + tRP, bankStates[rank][bank].nextActivate);
+						}
+						break;
 			case REFRESH:
 				//add energy to account for total
 				if (DEBUG_POWER)
