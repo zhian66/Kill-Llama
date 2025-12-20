@@ -481,8 +481,8 @@ int main(int argc, char **argv)
 	}
 	else
 	{
-		ERROR("== Unknown Tracefile Type : "<<temp);
-		exit(0);
+		// Default to mase format for unknown trace file prefixes
+		traceType = mase;
 	}
 
 
