@@ -68,6 +68,7 @@ extern bool DEBUG_BANKSTATE;
 extern bool DEBUG_BUS;
 extern bool DEBUG_BANKS;
 extern bool DEBUG_POWER;
+extern bool DEBUG_ROWBUFFER;   // Row buffer hit/miss debug output
 extern bool USE_LOW_POWER;
 extern bool VIS_FILE_OUTPUT;
 extern bool isSmartMRAM;       // new added

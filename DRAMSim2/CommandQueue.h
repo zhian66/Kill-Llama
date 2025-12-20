@@ -75,6 +75,11 @@ public:
 	void update(); //SimulatorObject requirement
 	vector<BusPacket *> &getCommandQueue(unsigned rank, unsigned bank);
 
+	// Row Buffer Hit/Miss statistics
+	uint64_t getRowBufferHits(unsigned rank, unsigned bank);
+	uint64_t getRowBufferMisses(unsigned rank, unsigned bank);
+	void resetRowBufferStats();
+
 	//fields
 	
 	BusPacket3D queues; // 3D array of BusPacket pointers
@@ -95,6 +100,10 @@ private:
 	vector< vector<unsigned> > rowAccessCounters;
 
 	bool sendAct;
+
+	// Row Buffer Hit/Miss counters
+	vector<uint64_t> rowBufferHits;
+	vector<uint64_t> rowBufferMisses;
 };
 }
 

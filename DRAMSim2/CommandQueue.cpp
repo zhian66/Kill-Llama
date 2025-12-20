@@ -79,6 +79,10 @@ CommandQueue::CommandQueue(vector< vector<BankState> > &states, ostream &dramsim
 	//vector of counters used to ensure rows don't stay open too long
 	rowAccessCounters = vector< vector<unsigned> >(NUM_RANKS, vector<unsigned>(NUM_BANKS,0));
 
+	// Row Buffer Hit/Miss counters initialization
+	rowBufferHits = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
+	rowBufferMisses = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
+
 	//create queue based on the structure we want
 	BusPacket1D actualQueue;
 	BusPacket2D perBankQueue = BusPacket2D();
@@ -441,7 +445,15 @@ bool CommandQueue::pop(BusPacket **busPacket)
 							if (i>0 && queue[i-1]->busPacketType == ACTIVATE)
 							{
 								rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
-								// i is being returned, but i-1 is being thrown away, so must delete it here 
+
+								if (DEBUG_ROWBUFFER)
+								{
+									PRINT("  [ROW HIT - ACT deleted] Rank=" << (*busPacket)->rank
+									      << " Bank=" << (*busPacket)->bank
+									      << " Row=" << (*busPacket)->row);
+								}
+
+								// i is being returned, but i-1 is being thrown away, so must delete it here
 								delete (queue[i-1]);
 
 								// remove both i-1 (the activate) and i (we've saved the pointer in *busPacket)
@@ -545,12 +557,30 @@ bool CommandQueue::pop(BusPacket **busPacket)
 		nextRankAndBank(nextRank, nextBank);
 	}
 
-	//if its an activate, add a tfaw counter
+	//if its an activate, add a tfaw counter and count as Row Buffer Miss
 	if ((*busPacket)->busPacketType==ACTIVATE)
 	{
-		if (!isSmartMRAM) 
+		// Row Buffer Miss - need to activate a new row
+		// Each ACTIVATE means a row miss (new row needs to be opened)
+		unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
+		rowBufferMisses[idx]++;
+
+		if (DEBUG_ROWBUFFER)
+		{
+			uint64_t totalMisses = 0;
+			for (size_t i = 0; i < NUM_RANKS * NUM_BANKS; i++)
+				totalMisses += rowBufferMisses[i];
+			PRINT("  [ROW MISS #" << totalMisses << "] Rank=" << (*busPacket)->rank
+			      << " Bank=" << (*busPacket)->bank
+			      << " Row=" << (*busPacket)->row
+			      << " Addr=0x" << hex << (*busPacket)->physicalAddress << dec);
+		}
+
+		if (!isSmartMRAM)
 		  tFAWCountdown[(*busPacket)->rank].push_back(tFAW);
 	}
+	// Note: We don't count READ/WRITE here as hits.
+	// Row Buffer Hits = Total Transactions - Row Buffer Misses (calculated in MemoryController)
 
 	return true;
 }
@@ -761,4 +791,24 @@ void CommandQueue::update()
 	//do nothing since pop() is effectively update(),
 	//needed for SimulatorObject
 	//TODO: make CommandQueue not a SimulatorObject
+}
+
+// Row Buffer Hit/Miss statistics getters
+uint64_t CommandQueue::getRowBufferHits(unsigned rank, unsigned bank)
+{
+	return rowBufferHits[rank * NUM_BANKS + bank];
+}
+
+uint64_t CommandQueue::getRowBufferMisses(unsigned rank, unsigned bank)
+{
+	return rowBufferMisses[rank * NUM_BANKS + bank];
+}
+
+void CommandQueue::resetRowBufferStats()
+{
+	for (size_t i = 0; i < NUM_RANKS * NUM_BANKS; i++)
+	{
+		rowBufferHits[i] = 0;
+		rowBufferMisses[i] = 0;
+	}
 }

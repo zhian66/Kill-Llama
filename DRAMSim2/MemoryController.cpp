@@ -849,6 +849,9 @@ void MemoryController::resetStats()
 		totalReadsPerRank[i] = 0;
 		totalWritesPerRank[i] = 0;
 	}
+
+	// Reset Row Buffer statistics
+	commandQueue.resetRowBufferStats();
 }
 //prints statistics at the end of an epoch or  simulation
 void MemoryController::printStats(bool finalStats)
@@ -898,7 +901,21 @@ void MemoryController::printStats(bool finalStats)
 	PRINTN( "   Total Return Transactions : " << totalTransactions );
 	PRINT( " ("<<totalBytesTransferred <<" bytes) aggregate average bandwidth "<<totalBandwidth<<"GB/s");
 
-	double totalAggregateBandwidth = 0.0;	
+	// Row Buffer Statistics - Overall
+	uint64_t totalACT = getTotalRowBufferMisses();  // ACTIVATE count
+	uint64_t totalHits = getTotalRowBufferHits();
+	double hitRate = getRowBufferHitRate();
+
+	PRINT( "   ---- Row Buffer Statistics ----" );
+	PRINT( "   Total ACTIVATE Commands   : " << totalACT );
+	PRINT( "   Row Buffer Hits           : " << totalHits );
+	PRINT( "   Row Buffer Hit Rate       : " << hitRate << "%" );
+	if (totalACT > totalTransactions) {
+		PRINT( "   WARNING: ACTIVATE(" << totalACT << ") > Transactions(" << totalTransactions
+		       << ") - Extra " << (totalACT - totalTransactions) << " ACT due to REFRESH/row policy" );
+	}
+
+	double totalAggregateBandwidth = 0.0;
 	for (size_t r=0;r<NUM_RANKS;r++)
 	{
 
@@ -910,6 +927,14 @@ void MemoryController::printStats(bool finalStats)
 		for (size_t j=0;j<NUM_BANKS;j++)
 		{
 			PRINT( "        -Bandwidth / Latency  (Bank " <<j<<"): " <<bandwidth[SEQUENTIAL(r,j)] << " GB/s\t\t" <<averageLatency[SEQUENTIAL(r,j)] << " ns");
+			// Per-Bank Row Buffer statistics
+			// ACT = ACTIVATE count, Hits = transactions - ACT (if ACT <= transactions)
+			uint64_t bankACT = commandQueue.getRowBufferMisses(r, j);
+			uint64_t bankTransactions = totalReadsPerBank[SEQUENTIAL(r,j)] + totalWritesPerBank[SEQUENTIAL(r,j)];
+			uint64_t bankHits = (bankTransactions > bankACT) ? (bankTransactions - bankACT) : 0;
+			double bankHitRate = (bankTransactions > 0 && bankACT <= bankTransactions) ?
+			    (double)bankHits / (double)bankTransactions * 100.0 : 0.0;
+			PRINT( "        -RowBuffer ACT/Hits (Bank " << j << "): " << bankACT << " / " << bankHits << " (" << bankHitRate << "% hit)");
 		}
 
 		// factor of 1000 at the end is to account for the fact that totalEnergy is accumulated in mJ since IDD values are given in mA
@@ -1025,4 +1050,35 @@ void MemoryController::insertHistogram(unsigned latencyValue, unsigned rank, uns
 	totalEpochLatency[SEQUENTIAL(rank,bank)] += latencyValue;
 	//poor man's way to bin things.
 	latencies[(latencyValue/HISTOGRAM_BIN_SIZE)*HISTOGRAM_BIN_SIZE]++;
+}
+
+// Row Buffer Hit/Miss statistics
+// Hit = Total Transactions - Misses (ACTIVATE count)
+uint64_t MemoryController::getTotalRowBufferHits()
+{
+	uint64_t misses = getTotalRowBufferMisses();
+	return (totalTransactions > misses) ? (totalTransactions - misses) : 0;
+}
+
+uint64_t MemoryController::getTotalRowBufferMisses()
+{
+	uint64_t total = 0;
+	for (size_t r = 0; r < NUM_RANKS; r++)
+		for (size_t b = 0; b < NUM_BANKS; b++)
+			total += commandQueue.getRowBufferMisses(r, b);
+	return total;
+}
+
+double MemoryController::getRowBufferHitRate()
+{
+	uint64_t misses = getTotalRowBufferMisses();
+	if (totalTransactions == 0) return 0.0;
+
+	// Handle edge case where misses > transactions
+	// This can happen due to REFRESH or TOTAL_ROW_ACCESSES forcing re-ACTIVATE
+	if (misses >= totalTransactions)
+		return 0.0;  // All accesses required ACTIVATE (worst case)
+
+	uint64_t hits = totalTransactions - misses;
+	return (double)hits / (double)totalTransactions * 100.0;
 }
