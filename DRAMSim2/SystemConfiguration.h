@@ -179,7 +179,8 @@ enum QueuingStructure
 enum SchedulingPolicy
 {
 	RankThenBankRoundRobin,
-	BankThenRankRoundRobin
+	BankThenRankRoundRobin,
+	PriorityBased
 };
 
 
