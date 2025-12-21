@@ -69,6 +69,10 @@ def parse_log_file(filepath: str) -> Optional[PowerData]:
     """
     Parse a DRAMSim2 log file and extract power breakdown and hit rate.
 
+    DRAMSim2 output format:
+    - Power values: use last (final) epoch values
+    - Row Buffer Hit Rate: cumulative percentage, use last value
+
     Returns:
         PowerData object with cumulative values, or None if parsing fails
     """
@@ -76,13 +80,12 @@ def parse_log_file(filepath: str) -> Optional[PowerData]:
         with open(filepath, 'r') as f:
             content = f.read()
 
-        # Sum all per-epoch power values (cumulative)
+        # Use last (final) values for power
         background_matches = re.findall(r'-Background \(watts\)\s*:\s*([\d.]+)', content)
         actpre_matches = re.findall(r'-Act/Pre\s*\(watts\)\s*:\s*([\d.]+)', content)
         burst_matches = re.findall(r'-Burst\s*\(watts\)\s*:\s*([\d.]+)', content)
         refresh_matches = re.findall(r'-Refresh\s*\(watts\)\s*:\s*([\d.]+)', content)
 
-        # Use last (final) values for power
         if background_matches and actpre_matches and burst_matches and refresh_matches:
             data = PowerData(
                 background=float(background_matches[-1]),
@@ -91,16 +94,10 @@ def parse_log_file(filepath: str) -> Optional[PowerData]:
                 refresh=float(refresh_matches[-1]),
             )
 
-            # Parse cumulative hit rate
-            hits_matches = re.findall(r'Row Buffer Hits\s*:\s*(\d+)', content)
-            misses_matches = re.findall(r'Row Buffer Misses\s*:\s*(\d+)', content)
-
-            if hits_matches and misses_matches:
-                total_hits = sum(int(x) for x in hits_matches)
-                total_misses = sum(int(x) for x in misses_matches)
-                total_accesses = total_hits + total_misses
-                if total_accesses > 0:
-                    data.hit_rate = (total_hits / total_accesses) * 100.0
+            # Use the last hit rate value (cumulative result at end of simulation)
+            hit_rate_matches = re.findall(r'Row Buffer Hit Rate\s*:\s*([\d.]+)%', content)
+            if hit_rate_matches:
+                data.hit_rate = float(hit_rate_matches[-1])
 
             return data
 
