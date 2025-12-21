@@ -1,0 +1,261 @@
+== Loading trace file '/home/ubuntu/sttmram/Kill-Llama/benchmark/traces/trc/GAP/pr.trc' == 
+== Loading device model file '/home/ubuntu/sttmram/Kill-Llama/DRAMSim2/ini/Baseline_DRAM.ini' == 
+== Loading system model file '/home/ubuntu/sttmram/Kill-Llama/experiment/fig14_energy_saving/system_energy.ini' == 
+WARNING: KEY isSmartMRAM NOT FOUND IN INI FILE.
+	Setting Default: isSmartMRAM=false
+===== MemorySystem 0 =====
+WARNING: Cannot create memory system with 2048MB, defaulting to minimum size of 8192MB
+CH. 0 TOTAL_STORAGE : 8192MB | 1 Ranks | 8 Devices per rank
+DRAMSim2 Clock Frequency =1333333333Hz, CPU Clock Frequency=1333333333Hz
+ =======================================================
+ ============== Printing Statistics [id:0]==============
+   Total Return Transactions : 0 (0 bytes) aggregate average bandwidth 0.000GB/s
+   ---- Row Buffer Statistics ----
+   Row Buffer Hits           : 0
+   Row Buffer Misses         : 0
+   Row Buffer Hit Rate       : 0.000%
+      -Rank   0 : 
+        -Reads  : 0 (0 bytes)
+        -Writes : 0 (0 bytes)
+        -Bandwidth / Latency  (Bank 0): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 0): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 1): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 1): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 2): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 2): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 3): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 3): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 4): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 4): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 5): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 5): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 6): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 6): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 7): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 7): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 8): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 8): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 9): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 9): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 10): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 10): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 11): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 11): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 12): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 12): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 13): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 13): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 14): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 14): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 15): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 15): 0 / 0 (0.000% hit)
+ == Power Data for Rank        0
+   Average Power (watts)     : 0.000
+     -Background (watts)     : 0.000
+     -Act/Pre    (watts)     : 0.000
+     -Burst      (watts)     : 0.000
+     -Refresh    (watts)     : 0.000
+
+ == Pending Transactions : 0 (0)==
+==== Channel [0] ====
+ =======================================================
+ ============== Printing Statistics [id:0]==============
+   Total Return Transactions : 9938 (636032 bytes) aggregate average bandwidth 7.898GB/s
+   ---- Row Buffer Statistics ----
+   Row Buffer Hits           : 9938
+   Row Buffer Misses         : 840
+   Row Buffer Hit Rate       : 92.206%
+      -Rank   0 : 
+        -Reads  : 8407 (538048 bytes)
+        -Writes : 1531 (97984 bytes)
+        -Bandwidth / Latency  (Bank 0): 7.898 GB/s		368.124 ns
+        -RowBuffer ACT/Hits (Bank 0): 840 / 9098 (91.548% hit)
+        -Bandwidth / Latency  (Bank 1): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 1): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 2): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 2): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 3): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 3): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 4): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 4): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 5): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 5): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 6): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 6): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 7): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 7): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 8): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 8): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 9): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 9): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 10): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 10): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 11): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 11): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 12): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 12): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 13): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 13): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 14): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 14): 0 / 0 (0.000% hit)
+        -Bandwidth / Latency  (Bank 15): 0.000 GB/s		-nan ns
+        -RowBuffer ACT/Hits (Bank 15): 0 / 0 (0.000% hit)
+ == Power Data for Rank        0
+   Average Power (watts)     : 0.852
+     -Background (watts)     : 0.425
+     -Act/Pre    (watts)     : 0.042
+     -Burst      (watts)     : 0.379
+     -Refresh    (watts)     : 0.006
+ ---  Latency list (118)
+       [lat] : #
+       [50-59] : 2
+       [110-119] : 1
+       [120-129] : 5
+       [130-139] : 6
+       [140-149] : 2
+       [190-199] : 34
+       [200-209] : 13
+       [210-219] : 25
+       [220-229] : 17
+       [230-239] : 22
+       [240-249] : 27
+       [250-259] : 669
+       [260-269] : 162
+       [270-279] : 44
+       [280-289] : 41
+       [290-299] : 100
+       [300-309] : 552
+       [310-319] : 146
+       [320-329] : 180
+       [330-339] : 194
+       [340-349] : 230
+       [350-359] : 167
+       [360-369] : 126
+       [370-379] : 175
+       [380-389] : 93
+       [390-399] : 118
+       [400-409] : 136
+       [410-419] : 358
+       [420-429] : 112
+       [430-439] : 171
+       [440-449] : 115
+       [450-459] : 303
+       [460-469] : 198
+       [470-479] : 102
+       [480-489] : 91
+       [490-499] : 114
+       [500-509] : 309
+       [510-519] : 269
+       [520-529] : 117
+       [530-539] : 108
+       [540-549] : 62
+       [550-559] : 303
+       [560-569] : 219
+       [570-579] : 113
+       [580-589] : 62
+       [590-599] : 92
+       [600-609] : 154
+       [610-619] : 174
+       [620-629] : 77
+       [630-639] : 85
+       [640-649] : 78
+       [650-659] : 113
+       [660-669] : 68
+       [670-679] : 42
+       [680-689] : 87
+       [690-699] : 32
+       [700-709] : 47
+       [710-719] : 21
+       [720-729] : 31
+       [730-739] : 55
+       [740-749] : 36
+       [750-759] : 43
+       [760-769] : 21
+       [770-779] : 19
+       [780-789] : 19
+       [790-799] : 16
+       [800-809] : 23
+       [810-819] : 15
+       [820-829] : 36
+       [830-839] : 13
+       [840-849] : 17
+       [850-859] : 5
+       [860-869] : 4
+       [870-879] : 11
+       [880-889] : 22
+       [890-899] : 15
+       [900-909] : 10
+       [910-919] : 9
+       [920-929] : 15
+       [930-939] : 11
+       [940-949] : 12
+       [950-959] : 6
+       [960-969] : 12
+       [970-979] : 44
+       [980-989] : 56
+       [990-999] : 6
+       [1000-1009] : 7
+       [1010-1019] : 11
+       [1020-1029] : 22
+       [1030-1039] : 78
+       [1040-1049] : 7
+       [1060-1069] : 3
+       [1070-1079] : 13
+       [1080-1089] : 111
+       [1090-1099] : 4
+       [1100-1109] : 3
+       [1110-1119] : 5
+       [1120-1129] : 13
+       [1130-1139] : 9
+       [1140-1149] : 3
+       [1150-1159] : 4
+       [1160-1169] : 2
+       [1170-1179] : 6
+       [1200-1209] : 1
+       [1210-1219] : 1
+       [1220-1229] : 2
+       [1230-1239] : 1
+       [1240-1249] : 3
+       [1260-1269] : 1
+       [1270-1279] : 1
+       [1280-1289] : 2
+       [1330-1339] : 2
+       [1490-1499] : 3
+       [1550-1559] : 10
+       [1580-1589] : 1
+       [1600-1609] : 6
+       [1610-1619] : 2
+       [1630-1639] : 5
+ ---  Access Latency list (10)
+       [lat] : #
+       [20-29] : 7472
+       [30-39] : 51
+       [40-49] : 802
+       [50-59] : 3
+       [60-69] : 63
+       [70-79] : 7
+       [80-89] : 4
+       [90-99] : 2
+       [100-109] : 2
+       [560-569] : 1
+ --- Grand Total Bank usage list
+Rank 0:
+  b0: 0
+  b1: 0
+  b2: 0
+  b3: 0
+  b4: 0
+  b5: 0
+  b6: 0
+  b7: 0
+  b8: 0
+  b9: 0
+  b10: 0
+  b11: 0
+  b12: 0
+  b13: 0
+  b14: 0
+  b15: 0
+
+ == Pending Transactions : 9 (100000)==
+//// Channel [0] ////
