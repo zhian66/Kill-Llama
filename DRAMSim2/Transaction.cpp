@@ -46,7 +46,10 @@ namespace DRAMSim {
 Transaction::Transaction(TransactionType transType, uint64_t addr, void *dat) :
 	transactionType(transType),
 	address(addr),
-	data(dat)
+	data(dat),
+	timeAdded(0),
+	timeReturned(0),
+	timeACTIssued(0)
 {}
 
 Transaction::Transaction(const Transaction &t)
@@ -55,6 +58,7 @@ Transaction::Transaction(const Transaction &t)
 	  , data(NULL)
 	  , timeAdded(t.timeAdded)
 	  , timeReturned(t.timeReturned)
+	  , timeACTIssued(t.timeACTIssued)
 {
 	#ifndef NO_STORAGE
 	ERROR("Data storage is really outdated and these copies happen in an \n improper way, which will eventually cause problems. Please send an \n email to dramninjas [at] gmail [dot] com if you need data storage");

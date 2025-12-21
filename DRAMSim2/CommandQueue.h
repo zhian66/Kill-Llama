@@ -104,6 +104,10 @@ private:
 	// Row Buffer Hit/Miss counters
 	vector<uint64_t> rowBufferHits;
 	vector<uint64_t> rowBufferMisses;
+
+	// Priority-based scheduling
+	BusPacketType lastIssuedCommand;
+	int calculatePriority(BusPacket *pkt, unsigned currentRank, unsigned currentBank, size_t age);
 };
 }
 

@@ -43,6 +43,7 @@
 #include "CommandQueue.h"
 #include "MemoryController.h"
 #include <assert.h>
+#include <climits>
 
 using namespace DRAMSim;
 
@@ -82,6 +83,9 @@ CommandQueue::CommandQueue(vector< vector<BankState> > &states, ostream &dramsim
 	// Row Buffer Hit/Miss counters initialization
 	rowBufferHits = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
 	rowBufferMisses = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
+
+	// Priority-based scheduling initialization
+	lastIssuedCommand = READ;  // Default to READ
 
 	//create queue based on the structure we want
 	BusPacket1D actualQueue;
@@ -407,29 +411,38 @@ bool CommandQueue::pop(BusPacket **busPacket)
 
 		if (!sendingREForPRE)
 		{
-			unsigned startingRank = nextRank;
-			unsigned startingBank = nextBank;
 			bool foundIssuable = false;
-			do // round robin over queues
+
+			// Priority-based scheduling: search ALL queues for best command
+			if (schedulingPolicy == PriorityBased)
 			{
-				vector<BusPacket *> &queue = getCommandQueue(nextRank,nextBank);
-				//make sure there is something there first
-				if (!queue.empty() && !((nextRank == refreshRank) && refreshWaiting))
+				BusPacket *bestPacket = NULL;
+				int bestPriority = INT_MAX;
+				unsigned bestRank = 0, bestBank = 0;
+				size_t bestIndex = 0;
+
+				// Search all queues for the best issuable command
+				for (unsigned r = 0; r < NUM_RANKS; r++)
 				{
-					//search from the beginning to find first issuable bus packet
-					for (size_t i=0;i<queue.size();i++)
+					if (r == refreshRank && refreshWaiting) continue;
+
+					for (unsigned b = 0; b < NUM_BANKS; b++)
 					{
-						BusPacket *packet = queue[i];
-						if (isIssuable(packet))
+						vector<BusPacket *> &queue = getCommandQueue(r, b);
+
+						for (size_t i = 0; i < queue.size(); i++)
 						{
-							//check for dependencies
+							BusPacket *packet = queue[i];
+							if (!isIssuable(packet)) continue;
+
+							// Check for dependencies
 							bool dependencyFound = false;
-							for (size_t j=0;j<i;j++)
+							for (size_t j = 0; j < i; j++)
 							{
 								BusPacket *prevPacket = queue[j];
 								if (prevPacket->busPacketType != ACTIVATE &&
-										prevPacket->bank == packet->bank &&
-										prevPacket->row == packet->row)
+								    prevPacket->bank == packet->bank &&
+								    prevPacket->row == packet->row)
 								{
 									dependencyFound = true;
 									break;
@@ -437,62 +450,206 @@ bool CommandQueue::pop(BusPacket **busPacket)
 							}
 							if (dependencyFound) continue;
 
-							*busPacket = packet;
+							// Calculate priority for this command
+							int priority = calculatePriority(packet, nextRank, nextBank, i);
 
-							//if the bus packet before is an activate, that is the act that was
-							//	paired with the column access we are removing, so we have to remove
-							//	that activate as well (check i>0 because if i==0 then theres nothing before it)
-							if (i>0 && queue[i-1]->busPacketType == ACTIVATE)
+							if (priority < bestPriority)
 							{
-								rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
-
-								if (DEBUG_ROWBUFFER)
-								{
-									PRINT("  [ROW HIT - ACT deleted] Rank=" << (*busPacket)->rank
-									      << " Bank=" << (*busPacket)->bank
-									      << " Row=" << (*busPacket)->row);
-								}
-
-								// i is being returned, but i-1 is being thrown away, so must delete it here
-								delete (queue[i-1]);
-
-								// remove both i-1 (the activate) and i (we've saved the pointer in *busPacket)
-								queue.erase(queue.begin()+i-1,queue.begin()+i+1);
+								bestPriority = priority;
+								bestPacket = packet;
+								bestRank = r;
+								bestBank = b;
+								bestIndex = i;
 							}
-							else // there's no activate before this packet
-							{
-								//or just remove the one bus packet
-								queue.erase(queue.begin()+i);
-							}
-
-							foundIssuable = true;
-							break;
 						}
 					}
 				}
 
-				//if we found something, break out of do-while
-				if (foundIssuable) break;
+				// Issue the best command found
+				if (bestPacket != NULL)
+				{
+					vector<BusPacket *> &queue = getCommandQueue(bestRank, bestBank);
+					*busPacket = bestPacket;
 
-				//rank round robin
-				if (queuingStructure == PerRank)
-				{
-					nextRank = (nextRank + 1) % NUM_RANKS;
-					if (startingRank == nextRank)
+					// Update last issued command type for priority calculation
+					if (bestPacket->busPacketType == READ || bestPacket->busPacketType == READ_P)
 					{
-						break;
+						lastIssuedCommand = READ;
 					}
-				}
-				else 
-				{
-					nextRankAndBank(nextRank, nextBank); 
-					if (startingRank == nextRank && startingBank == nextBank)
+					else if (bestPacket->busPacketType == WRITE || bestPacket->busPacketType == WRITE_P)
 					{
-						break;
+						lastIssuedCommand = WRITE;
 					}
+
+					// Handle row buffer hit/miss tracking (same logic as round-robin)
+					if (bestIndex > 0 && queue[bestIndex-1]->busPacketType == ACTIVATE &&
+					    queue[bestIndex-1]->bank == bestPacket->bank &&
+					    queue[bestIndex-1]->row == bestPacket->row)
+					{
+						// Row Buffer HIT - skip ACTIVATE
+						unsigned idx = bestPacket->rank * NUM_BANKS + bestPacket->bank;
+						rowBufferHits[idx]++;
+						rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
+
+						if (DEBUG_ROWBUFFER)
+						{
+							uint64_t totalHits = 0;
+							for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
+								totalHits += rowBufferHits[h];
+							PRINT("  [ROW HIT #" << totalHits << " - ACT deleted] Rank=" << bestPacket->rank
+							      << " Bank=" << bestPacket->bank
+							      << " Row=" << bestPacket->row);
+						}
+
+						delete (queue[bestIndex-1]);
+						queue.erase(queue.begin()+bestIndex-1, queue.begin()+bestIndex+1);
+					}
+					else
+					{
+						if (bestPacket->busPacketType == READ || bestPacket->busPacketType == READ_P ||
+						    bestPacket->busPacketType == WRITE || bestPacket->busPacketType == WRITE_P)
+						{
+							unsigned idx = bestPacket->rank * NUM_BANKS + bestPacket->bank;
+							rowBufferHits[idx]++;
+							rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
+
+							if (DEBUG_ROWBUFFER)
+							{
+								uint64_t totalHits = 0;
+								for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
+									totalHits += rowBufferHits[h];
+								PRINT("  [ROW HIT #" << totalHits << "] Rank=" << bestPacket->rank
+								      << " Bank=" << bestPacket->bank
+								      << " Row=" << bestPacket->row);
+							}
+						}
+
+						queue.erase(queue.begin()+bestIndex);
+					}
+
+					foundIssuable = true;
 				}
 			}
-			while (true);
+			else // Round-robin scheduling (original logic)
+			{
+				unsigned startingRank = nextRank;
+				unsigned startingBank = nextBank;
+
+				do // round robin over queues
+				{
+					vector<BusPacket *> &queue = getCommandQueue(nextRank,nextBank);
+					//make sure there is something there first
+					if (!queue.empty() && !((nextRank == refreshRank) && refreshWaiting))
+					{
+						//search from the beginning to find first issuable bus packet
+						for (size_t i=0;i<queue.size();i++)
+						{
+							BusPacket *packet = queue[i];
+							if (isIssuable(packet))
+							{
+								//check for dependencies
+								bool dependencyFound = false;
+								for (size_t j=0;j<i;j++)
+								{
+									BusPacket *prevPacket = queue[j];
+									if (prevPacket->busPacketType != ACTIVATE &&
+											prevPacket->bank == packet->bank &&
+											prevPacket->row == packet->row)
+									{
+										dependencyFound = true;
+										break;
+									}
+								}
+								if (dependencyFound) continue;
+
+								*busPacket = packet;
+
+								//if the bus packet before is an activate, that is the act that was
+								//	paired with the column access we are removing, so we have to remove
+								//	that activate as well (check i>0 because if i==0 then theres nothing before it)
+								if (i>0 && queue[i-1]->busPacketType == ACTIVATE &&
+									queue[i-1]->bank == packet->bank &&
+									queue[i-1]->row == packet->row)
+								{
+									// This is a Row Buffer HIT - the row is already open,
+									// so we skip the ACTIVATE and issue READ/WRITE directly
+									unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
+									rowBufferHits[idx]++;
+									rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
+
+									if (DEBUG_ROWBUFFER)
+									{
+										uint64_t totalHits = 0;
+										for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
+											totalHits += rowBufferHits[h];
+										PRINT("  [ROW HIT #" << totalHits << " - ACT deleted] Rank=" << (*busPacket)->rank
+										      << " Bank=" << (*busPacket)->bank
+										      << " Row=" << (*busPacket)->row);
+									}
+
+									// i is being returned, but i-1 is being thrown away, so must delete it here
+									delete (queue[i-1]);
+
+									// remove both i-1 (the activate) and i (we've saved the pointer in *busPacket)
+									queue.erase(queue.begin()+i-1,queue.begin()+i+1);
+								}
+								else // there's no activate before this packet
+								{
+									// Only count as HIT if this is a READ/WRITE command
+									// ACTIVATE commands should NOT be counted as hits
+									if (packet->busPacketType == READ || packet->busPacketType == READ_P ||
+									    packet->busPacketType == WRITE || packet->busPacketType == WRITE_P)
+									{
+										// This is a Row Buffer HIT - READ/WRITE without preceding ACTIVATE
+										// The row is already open, no need to activate
+										unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
+										rowBufferHits[idx]++;
+										rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
+
+										if (DEBUG_ROWBUFFER)
+										{
+											uint64_t totalHits = 0;
+											for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
+												totalHits += rowBufferHits[h];
+											PRINT("  [ROW HIT #" << totalHits << "] Rank=" << (*busPacket)->rank
+											      << " Bank=" << (*busPacket)->bank
+											      << " Row=" << (*busPacket)->row);
+										}
+									}
+
+									//remove the bus packet from queue
+									queue.erase(queue.begin()+i);
+								}
+
+								foundIssuable = true;
+								break;
+							}
+						}
+					}
+
+					//if we found something, break out of do-while
+					if (foundIssuable) break;
+
+					//rank round robin
+					if (queuingStructure == PerRank)
+					{
+						nextRank = (nextRank + 1) % NUM_RANKS;
+						if (startingRank == nextRank)
+						{
+							break;
+						}
+					}
+					else
+					{
+						nextRankAndBank(nextRank, nextBank);
+						if (startingRank == nextRank && startingBank == nextBank)
+						{
+							break;
+						}
+					}
+				}
+				while (true);
+			}
 
 			//if nothing was issuable, see if we can issue a PRE to an open bank
 			//	that has no other commands waiting
@@ -579,8 +736,8 @@ bool CommandQueue::pop(BusPacket **busPacket)
 		if (!isSmartMRAM)
 		  tFAWCountdown[(*busPacket)->rank].push_back(tFAW);
 	}
-	// Note: We don't count READ/WRITE here as hits.
-	// Row Buffer Hits = Total Transactions - Row Buffer Misses (calculated in MemoryController)
+	// Note: Row Buffer Hits are counted in the open_page section above (lines 445-466)
+	// when a READ/WRITE is issued WITHOUT a preceding ACTIVATE in the queue
 
 	return true;
 }
@@ -778,6 +935,21 @@ void CommandQueue::nextRankAndBank(unsigned &rank, unsigned &bank)
 			}
 		}
 	}
+	else if (schedulingPolicy == PriorityBased)
+	{
+		// For priority-based scheduling, still advance for PRE searches
+		// Use bank-then-rank order
+		bank++;
+		if (bank == NUM_BANKS)
+		{
+			bank = 0;
+			rank++;
+			if (rank == NUM_RANKS)
+			{
+				rank = 0;
+			}
+		}
+	}
 	else
 	{
 		ERROR("== Error - Unknown scheduling policy");
@@ -811,4 +983,43 @@ void CommandQueue::resetRowBufferStats()
 		rowBufferHits[i] = 0;
 		rowBufferMisses[i] = 0;
 	}
+}
+
+// Priority-based scheduling helper
+// Lower priority value = higher priority (will be selected first)
+// Priority order: Same command (1st) > Different bank (2nd) > Open page (3rd) > Age (4th)
+int CommandQueue::calculatePriority(BusPacket *pkt, unsigned currentRank, unsigned currentBank, size_t age)
+{
+	int priority = 0;
+
+	// Priority 1: Same command type (READ vs WRITE grouping)
+	// Prefer commands of the same type as last issued
+	if (pkt->busPacketType != lastIssuedCommand &&
+	    pkt->busPacketType != ACTIVATE &&
+	    pkt->busPacketType != PRECHARGE)
+	{
+		priority += 10000;
+	}
+
+	// Priority 2: Different bank (prefer bank-level parallelism)
+	// Penalty for targeting the same bank as current focus
+	if (pkt->bank == currentBank && pkt->rank == currentRank)
+	{
+		priority += 1000;
+	}
+
+	// Priority 3: Open page / Row buffer hit
+	// Penalty for row miss (requires ACTIVATE)
+	BankState &state = bankStates[pkt->rank][pkt->bank];
+	if (state.currentBankState != RowActive ||
+	    state.openRowAddress != pkt->row)
+	{
+		priority += 100;
+	}
+
+	// Priority 4: Age (FCFS among same priority level)
+	// Older commands (smaller index) get lower priority value
+	priority += (int)age;
+
+	return priority;
 }

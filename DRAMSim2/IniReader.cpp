@@ -635,14 +635,22 @@ void IniReader::InitEnumsFromStrings()
 	else if (SCHEDULING_POLICY == "bank_then_rank_round_robin")
 	{
 		schedulingPolicy = BankThenRankRoundRobin;
-		if (DEBUG_INI_READER) 
+		if (DEBUG_INI_READER)
 		{
 			DEBUG("SCHEDULING: Bank Then Rank");
 		}
 	}
+	else if (SCHEDULING_POLICY == "priority_based")
+	{
+		schedulingPolicy = PriorityBased;
+		if (DEBUG_INI_READER)
+		{
+			DEBUG("SCHEDULING: Priority Based (Same Cmd > Diff Bank > Open Page > Age)");
+		}
+	}
 	else
 	{
-		cout << "WARNING: Unknown scheduling policy '"<<SCHEDULING_POLICY<<"'; valid options are 'rank_then_bank_round_robin' or 'bank_then_rank_round_robin'; defaulting to Bank Then Rank Round Robin" << endl;
+		cout << "WARNING: Unknown scheduling policy '"<<SCHEDULING_POLICY<<"'; valid options are 'rank_then_bank_round_robin', 'bank_then_rank_round_robin', or 'priority_based'; defaulting to Bank Then Rank Round Robin" << endl;
 		schedulingPolicy = BankThenRankRoundRobin;
 	}
 

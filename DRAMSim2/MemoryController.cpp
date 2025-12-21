@@ -315,6 +315,17 @@ void MemoryController::update()
 		{
 			case READ_P:
 			case READ:
+				// Record timeACTIssued for row buffer hits (when ACTIVATE was skipped)
+				for (size_t t=0; t<pendingReadTransactions.size(); t++)
+				{
+					if (pendingReadTransactions[t]->address == poppedBusPacket->physicalAddress &&
+						pendingReadTransactions[t]->timeACTIssued == 0)
+					{
+						pendingReadTransactions[t]->timeACTIssued = currentClockCycle;
+						break;
+					}
+				}
+
 				//add energy to account for total
 		// [SMART]: 如果是 ACTIVATE 後的第一次存取，計算 Sensing Energy (原本的 ActPre Energy)
 				if (isSmartMRAM && bankStates[rank][bank].lastCommand == ACTIVATE)
@@ -435,11 +446,21 @@ void MemoryController::update()
 
 				break;
 				case ACTIVATE:
-						// [SMART 修改整合]: ACTIVATE 
+						// [SMART 修改整合]: ACTIVATE
 						// 1. 不計算 ActPre Energy (因為只是 Decoding，移到 Read/Write 算)。
 						// 2. 移除 tRCD (ACT->READ/WRITE) 和 tRAS (ACT->PRE) 的時序限制。
 
-						if (!isSmartMRAM) 
+						// Record actual ACT issue time for access latency tracking
+						for (size_t t=0; t<pendingReadTransactions.size(); t++)
+						{
+							if (pendingReadTransactions[t]->address == poppedBusPacket->physicalAddress)
+							{
+								pendingReadTransactions[t]->timeACTIssued = currentClockCycle;
+								break;
+							}
+						}
+
+						if (!isSmartMRAM)
 						{
 							// [原本 DRAM]: 計算 ACT 功耗
 							if (DEBUG_POWER) PRINT(" ++ Adding Activate and Precharge energy to total energy");
@@ -592,19 +613,20 @@ void MemoryController::update()
 
 
 
-			commandQueue.enqueue(ACTcommand);
-			commandQueue.enqueue(command);
-
-			// If we have a read, save the transaction so when the data comes back
-			// in a bus packet, we can staple it back into a transaction and return it
+			// If we have a read, save the transaction BEFORE enqueueing commands
+			// so it's available when ACTIVATE is issued for timeACTIssued tracking
 			if (transaction->transactionType == DATA_READ)
 			{
 				pendingReadTransactions.push_back(transaction);
 			}
-			else
+
+			commandQueue.enqueue(ACTcommand);
+			commandQueue.enqueue(command);
+
+			if (transaction->transactionType != DATA_READ)
 			{
 				// just delete the transaction now that it's a buspacket
-				delete transaction; 
+				delete transaction;
 			}
 			/* only allow one transaction to be scheduled per cycle -- this should
 			 * be a reasonable assumption considering how much logic would be
@@ -723,14 +745,17 @@ void MemoryController::update()
 		{
 			if (pendingReadTransactions[i]->address == returnTransaction[0]->address)
 			{
-				//if(currentClockCycle - pendingReadTransactions[i]->timeAdded > 2000)
-				//	{
-				//		pendingReadTransactions[i]->print();
-				//		exit(0);
-				//	}
 				unsigned chan,rank,bank,row,col;
 				addressMapping(returnTransaction[0]->address,chan,rank,bank,row,col);
-				insertHistogram(currentClockCycle-pendingReadTransactions[i]->timeAdded,rank,bank);
+
+				// Total latency (from transaction added to data return)
+				unsigned totalLatency = currentClockCycle - pendingReadTransactions[i]->timeAdded;
+				insertHistogram(totalLatency, rank, bank);
+
+				// Access latency (from commands enqueued to data return)
+				unsigned accessLatency = currentClockCycle - pendingReadTransactions[i]->timeACTIssued;
+				accessLatencies[(accessLatency/HISTOGRAM_BIN_SIZE)*HISTOGRAM_BIN_SIZE]++;
+
 				//return latency
 				returnReadData(pendingReadTransactions[i]);
 
@@ -907,13 +932,9 @@ void MemoryController::printStats(bool finalStats)
 	double hitRate = getRowBufferHitRate();
 
 	PRINT( "   ---- Row Buffer Statistics ----" );
-	PRINT( "   Total ACTIVATE Commands   : " << totalACT );
 	PRINT( "   Row Buffer Hits           : " << totalHits );
+	PRINT( "   Row Buffer Misses         : " << totalACT );
 	PRINT( "   Row Buffer Hit Rate       : " << hitRate << "%" );
-	if (totalACT > totalTransactions) {
-		PRINT( "   WARNING: ACTIVATE(" << totalACT << ") > Transactions(" << totalTransactions
-		       << ") - Extra " << (totalACT - totalTransactions) << " ACT due to REFRESH/row policy" );
-	}
 
 	double totalAggregateBandwidth = 0.0;
 	for (size_t r=0;r<NUM_RANKS;r++)
@@ -1001,6 +1022,23 @@ void MemoryController::printStats(bool finalStats)
 				csvOut.getOutputStream() << it->first <<"="<< it->second << endl;
 			}
 		}
+
+		// Access Latency Histogram (from command enqueue to data return)
+		PRINT( " ---  Access Latency list ("<<accessLatencies.size()<<")");
+		PRINT( "       [lat] : #");
+		if (VIS_FILE_OUTPUT)
+		{
+			csvOut.getOutputStream() << "!!ACCESS_HISTOGRAM_DATA"<<endl;
+		}
+		for (it=accessLatencies.begin(); it!=accessLatencies.end(); it++)
+		{
+			PRINT( "       ["<< it->first <<"-"<<it->first+(HISTOGRAM_BIN_SIZE-1)<<"] : "<< it->second );
+			if (VIS_FILE_OUTPUT)
+			{
+				csvOut.getOutputStream() << "ACCESS_" << it->first <<"="<< it->second << endl;
+			}
+		}
+
 		if (currentClockCycle % EPOCH_LENGTH == 0)
 		{
 			PRINT( " --- Grand Total Bank usage list");
@@ -1053,11 +1091,14 @@ void MemoryController::insertHistogram(unsigned latencyValue, unsigned rank, uns
 }
 
 // Row Buffer Hit/Miss statistics
-// Hit = Total Transactions - Misses (ACTIVATE count)
+// Hit = READ/WRITE commands that hit open row (counted directly in CommandQueue)
 uint64_t MemoryController::getTotalRowBufferHits()
 {
-	uint64_t misses = getTotalRowBufferMisses();
-	return (totalTransactions > misses) ? (totalTransactions - misses) : 0;
+	uint64_t total = 0;
+	for (size_t r = 0; r < NUM_RANKS; r++)
+		for (size_t b = 0; b < NUM_BANKS; b++)
+			total += commandQueue.getRowBufferHits(r, b);
+	return total;
 }
 
 uint64_t MemoryController::getTotalRowBufferMisses()
@@ -1071,14 +1112,10 @@ uint64_t MemoryController::getTotalRowBufferMisses()
 
 double MemoryController::getRowBufferHitRate()
 {
+	uint64_t hits = getTotalRowBufferHits();
 	uint64_t misses = getTotalRowBufferMisses();
-	if (totalTransactions == 0) return 0.0;
+	uint64_t total = hits + misses;
 
-	// Handle edge case where misses > transactions
-	// This can happen due to REFRESH or TOTAL_ROW_ACCESSES forcing re-ACTIVATE
-	if (misses >= totalTransactions)
-		return 0.0;  // All accesses required ACTIVATE (worst case)
-
-	uint64_t hits = totalTransactions - misses;
-	return (double)hits / (double)totalTransactions * 100.0;
+	if (total == 0) return 0.0;
+	return (double)hits / (double)total * 100.0;
 }
