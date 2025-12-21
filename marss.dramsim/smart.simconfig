@@ -1,5 +1,5 @@
--dramsim-device-ini-file /data/DRAMSim2/ini/my_ddr4.ini
--dramsim-system-ini-file /data/DRAMSim2/system.ini
+-dramsim-device-ini-file ini/Baseline_DRAM.ini
+-dramsim-system-ini-file system.ini
 -dramsim-results-dir-name results_smart
--machine single_core
+-machine quad_core
 -quiet

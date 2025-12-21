@@ -29,7 +29,7 @@ env.Append(CCFLAGS = "-DMARSS_QEMU")
 
 GCC_VERSION = subprocess.Popen([env['CC'], '-dumpversion'],
     stdout=subprocess.PIPE).communicate()[0].strip()
-GCC_MAJOR_MINOR_VERSION = re.match(r'\d*\.\d+',GCC_VERSION).group() #e.g. returns 4.2 for 4.2.2
+match = re.search(r'(\d+\.\d+)', GCC_VERSION); GCC_MAJOR_MINOR_VERSION = match.group(1) if match else '13.3'
 
 num_sim_cores = ARGUMENTS.get('c', 1)
 env.Append(CCFLAGS = '-DNUM_SIM_CORES=%d' % int(num_sim_cores))
