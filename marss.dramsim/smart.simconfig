@@ -1,0 +1,5 @@
+-dramsim-device-ini-file /data/DRAMSim2/ini/my_ddr4.ini
+-dramsim-system-ini-file /data/DRAMSim2/system.ini
+-dramsim-results-dir-name results_smart
+-machine single_core
+-quiet
