@@ -92,8 +92,7 @@ private:
 	vector<unsigned> writeDataCountdown;
 	vector<Transaction *> returnTransaction;
 	vector<Transaction *> pendingReadTransactions;
-	map<unsigned,unsigned> latencies; // latencyValue -> latencyCount (total latency)
-	map<unsigned,unsigned> accessLatencies; // Access-only latency (from ACT to data return)
+	map<unsigned,unsigned> latencies; // latencyValue -> latencyCount
 	vector<bool> powerDown;
 
 	vector<Rank *> *ranks;

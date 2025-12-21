@@ -59,7 +59,6 @@ public:
 	void *data;
 	uint64_t timeAdded;
 	uint64_t timeReturned;
-	uint64_t timeACTIssued;  // When ACTIVATE command was issued (for access latency tracking)
 
 	friend ostream &operator<<(ostream &os, const Transaction &t);
 	//functions

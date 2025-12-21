@@ -315,17 +315,6 @@ void MemoryController::update()
 		{
 			case READ_P:
 			case READ:
-				// Record timeACTIssued for row buffer hits (when ACTIVATE was skipped)
-				for (size_t t=0; t<pendingReadTransactions.size(); t++)
-				{
-					if (pendingReadTransactions[t]->address == poppedBusPacket->physicalAddress &&
-						pendingReadTransactions[t]->timeACTIssued == 0)
-					{
-						pendingReadTransactions[t]->timeACTIssued = currentClockCycle;
-						break;
-					}
-				}
-
 				//add energy to account for total
 		// [SMART]: 如果是 ACTIVATE 後的第一次存取，計算 Sensing Energy (原本的 ActPre Energy)
 				if (isSmartMRAM && bankStates[rank][bank].lastCommand == ACTIVATE)
@@ -449,16 +438,6 @@ void MemoryController::update()
 						// [SMART 修改整合]: ACTIVATE
 						// 1. 不計算 ActPre Energy (因為只是 Decoding，移到 Read/Write 算)。
 						// 2. 移除 tRCD (ACT->READ/WRITE) 和 tRAS (ACT->PRE) 的時序限制。
-
-						// Record actual ACT issue time for access latency tracking
-						for (size_t t=0; t<pendingReadTransactions.size(); t++)
-						{
-							if (pendingReadTransactions[t]->address == poppedBusPacket->physicalAddress)
-							{
-								pendingReadTransactions[t]->timeACTIssued = currentClockCycle;
-								break;
-							}
-						}
 
 						if (!isSmartMRAM)
 						{
@@ -613,8 +592,7 @@ void MemoryController::update()
 
 
 
-			// If we have a read, save the transaction BEFORE enqueueing commands
-			// so it's available when ACTIVATE is issued for timeACTIssued tracking
+			// If we have a read, save the transaction so we can return it later
 			if (transaction->transactionType == DATA_READ)
 			{
 				pendingReadTransactions.push_back(transaction);
@@ -748,15 +726,9 @@ void MemoryController::update()
 				unsigned chan,rank,bank,row,col;
 				addressMapping(returnTransaction[0]->address,chan,rank,bank,row,col);
 
-				// Total latency (from transaction added to data return)
-				unsigned totalLatency = currentClockCycle - pendingReadTransactions[i]->timeAdded;
-				insertHistogram(totalLatency, rank, bank);
-
-				// Access latency (from commands enqueued to data return)
-				unsigned accessLatency = currentClockCycle - pendingReadTransactions[i]->timeACTIssued;
-				accessLatencies[(accessLatency/HISTOGRAM_BIN_SIZE)*HISTOGRAM_BIN_SIZE]++;
-
 				//return latency
+				unsigned newLatency = currentClockCycle - pendingReadTransactions[i]->timeAdded;
+				insertHistogram(newLatency, rank, bank);
 				returnReadData(pendingReadTransactions[i]);
 
 				delete pendingReadTransactions[i];
@@ -1020,22 +992,6 @@ void MemoryController::printStats(bool finalStats)
 			if (VIS_FILE_OUTPUT)
 			{
 				csvOut.getOutputStream() << it->first <<"="<< it->second << endl;
-			}
-		}
-
-		// Access Latency Histogram (from command enqueue to data return)
-		PRINT( " ---  Access Latency list ("<<accessLatencies.size()<<")");
-		PRINT( "       [lat] : #");
-		if (VIS_FILE_OUTPUT)
-		{
-			csvOut.getOutputStream() << "!!ACCESS_HISTOGRAM_DATA"<<endl;
-		}
-		for (it=accessLatencies.begin(); it!=accessLatencies.end(); it++)
-		{
-			PRINT( "       ["<< it->first <<"-"<<it->first+(HISTOGRAM_BIN_SIZE-1)<<"] : "<< it->second );
-			if (VIS_FILE_OUTPUT)
-			{
-				csvOut.getOutputStream() << "ACCESS_" << it->first <<"="<< it->second << endl;
 			}
 		}
 
