@@ -56,8 +56,11 @@ def parse_log_file(filepath: str) -> Optional[float]:
     """
     Parse a DRAMSim2 log file and extract the cumulative Row Buffer Hit Rate.
 
-    DRAMSim2 outputs per-epoch statistics, so we need to sum all hits and misses
-    across all epochs to get the true overall hit rate.
+    DRAMSim2 output format:
+    - Row Buffer Hits: cumulative value (total hits from simulation start)
+    - Row Buffer Hit Rate: directly calculated hit rate percentage
+
+    We use the last Row Buffer Hit Rate value (final cumulative result).
 
     Returns:
         Hit rate as percentage (0-100), or None if not found
@@ -66,19 +69,7 @@ def parse_log_file(filepath: str) -> Optional[float]:
         with open(filepath, 'r') as f:
             content = f.read()
 
-        # Sum all per-epoch hits and misses
-        hits_matches = re.findall(r'Row Buffer Hits\s*:\s*(\d+)', content)
-        misses_matches = re.findall(r'Row Buffer Misses\s*:\s*(\d+)', content)
-
-        if hits_matches and misses_matches:
-            total_hits = sum(int(x) for x in hits_matches)
-            total_misses = sum(int(x) for x in misses_matches)
-            total_accesses = total_hits + total_misses
-
-            if total_accesses > 0:
-                return (total_hits / total_accesses) * 100.0
-
-        # Fallback: use last hit rate if parsing fails
+        # Use the last hit rate value (cumulative result at end of simulation)
         pattern = r'Row Buffer Hit Rate\s*:\s*([\d.]+)%'
         matches = re.findall(pattern, content)
         if matches:

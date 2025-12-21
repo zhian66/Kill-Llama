@@ -7,3 +7,10 @@
 
 # DRAMSim2 results
 DRAMSim2/results/
+
+# Benchmark traces
+benchmark/traces/trc
+
+# Experiments results
+experiment/*/archive/
+experiment/*/trace_log/

@@ -60,7 +60,6 @@ public:
 	uint64_t timeAdded;
 	uint64_t timeReturned;
 
-
 	friend ostream &operator<<(ostream &os, const Transaction &t);
 	//functions
 	Transaction(TransactionType transType, uint64_t addr, void *data);

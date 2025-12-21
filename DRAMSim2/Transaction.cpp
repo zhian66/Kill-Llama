@@ -46,7 +46,9 @@ namespace DRAMSim {
 Transaction::Transaction(TransactionType transType, uint64_t addr, void *dat) :
 	transactionType(transType),
 	address(addr),
-	data(dat)
+	data(dat),
+	timeAdded(0),
+	timeReturned(0)
 {}
 
 Transaction::Transaction(const Transaction &t)

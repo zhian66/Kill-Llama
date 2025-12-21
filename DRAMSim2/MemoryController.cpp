@@ -154,7 +154,9 @@ void MemoryController::attachRanks(vector<Rank *> *ranks)
 void MemoryController::update()
 {
 
-	//PRINT(" ------------------------- [" << currentClockCycle << "] -------------------------");
+	if (DEBUG_ROWBUFFER) {
+		PRINT(" ------------------------- [" << currentClockCycle << "] -------------------------");
+	}
 
 	//update bank states
 	for (size_t i=0;i<NUM_RANKS;i++)
@@ -175,7 +177,7 @@ void MemoryController::update()
 					case WRITE_P:
 					case READ_P:
 					// [SMART 修改整合]: 處理 Auto-Precharge
-							// SMART 沒有 Restore 過程，因此 Auto-Precharge 是瞬間完成的，直接回到 Idle。
+					// SMART 沒有 Restore 過程，因此 Auto-Precharge 是瞬間完成的，直接回到 Idle。
 						if (isSmartMRAM)
 							{
 							bankStates[i][j].currentBankState = Idle; // 直接 Idle
@@ -435,11 +437,11 @@ void MemoryController::update()
 
 				break;
 				case ACTIVATE:
-						// [SMART 修改整合]: ACTIVATE 
+						// [SMART 修改整合]: ACTIVATE
 						// 1. 不計算 ActPre Energy (因為只是 Decoding，移到 Read/Write 算)。
 						// 2. 移除 tRCD (ACT->READ/WRITE) 和 tRAS (ACT->PRE) 的時序限制。
 
-						if (!isSmartMRAM) 
+						if (!isSmartMRAM)
 						{
 							// [原本 DRAM]: 計算 ACT 功耗
 							if (DEBUG_POWER) PRINT(" ++ Adding Activate and Precharge energy to total energy");
@@ -723,15 +725,12 @@ void MemoryController::update()
 		{
 			if (pendingReadTransactions[i]->address == returnTransaction[0]->address)
 			{
-				//if(currentClockCycle - pendingReadTransactions[i]->timeAdded > 2000)
-				//	{
-				//		pendingReadTransactions[i]->print();
-				//		exit(0);
-				//	}
 				unsigned chan,rank,bank,row,col;
 				addressMapping(returnTransaction[0]->address,chan,rank,bank,row,col);
-				insertHistogram(currentClockCycle-pendingReadTransactions[i]->timeAdded,rank,bank);
+
 				//return latency
+				unsigned newLatency = currentClockCycle - pendingReadTransactions[i]->timeAdded;
+				insertHistogram(newLatency, rank, bank);
 				returnReadData(pendingReadTransactions[i]);
 
 				delete pendingReadTransactions[i];
@@ -849,9 +848,6 @@ void MemoryController::resetStats()
 		totalReadsPerRank[i] = 0;
 		totalWritesPerRank[i] = 0;
 	}
-
-	// Reset Row Buffer statistics
-	commandQueue.resetRowBufferStats();
 }
 //prints statistics at the end of an epoch or  simulation
 void MemoryController::printStats(bool finalStats)
@@ -901,19 +897,13 @@ void MemoryController::printStats(bool finalStats)
 	PRINTN( "   Total Return Transactions : " << totalTransactions );
 	PRINT( " ("<<totalBytesTransferred <<" bytes) aggregate average bandwidth "<<totalBandwidth<<"GB/s");
 
-	// Row Buffer Statistics - Overall
-	uint64_t totalACT = getTotalRowBufferMisses();  // ACTIVATE count
-	uint64_t totalHits = getTotalRowBufferHits();
-	double hitRate = getRowBufferHitRate();
+	// Row Buffer Statistics
+	uint64_t totalHits = commandQueue.getTotalRowBufferHits();
+	double hitRate = (totalTransactions == 0) ? 0.0 : (double)totalHits / (double)totalTransactions * 100.0;
 
 	PRINT( "   ---- Row Buffer Statistics ----" );
-	PRINT( "   Total ACTIVATE Commands   : " << totalACT );
 	PRINT( "   Row Buffer Hits           : " << totalHits );
 	PRINT( "   Row Buffer Hit Rate       : " << hitRate << "%" );
-	if (totalACT > totalTransactions) {
-		PRINT( "   WARNING: ACTIVATE(" << totalACT << ") > Transactions(" << totalTransactions
-		       << ") - Extra " << (totalACT - totalTransactions) << " ACT due to REFRESH/row policy" );
-	}
 
 	double totalAggregateBandwidth = 0.0;
 	for (size_t r=0;r<NUM_RANKS;r++)
@@ -927,14 +917,6 @@ void MemoryController::printStats(bool finalStats)
 		for (size_t j=0;j<NUM_BANKS;j++)
 		{
 			PRINT( "        -Bandwidth / Latency  (Bank " <<j<<"): " <<bandwidth[SEQUENTIAL(r,j)] << " GB/s\t\t" <<averageLatency[SEQUENTIAL(r,j)] << " ns");
-			// Per-Bank Row Buffer statistics
-			// ACT = ACTIVATE count, Hits = transactions - ACT (if ACT <= transactions)
-			uint64_t bankACT = commandQueue.getRowBufferMisses(r, j);
-			uint64_t bankTransactions = totalReadsPerBank[SEQUENTIAL(r,j)] + totalWritesPerBank[SEQUENTIAL(r,j)];
-			uint64_t bankHits = (bankTransactions > bankACT) ? (bankTransactions - bankACT) : 0;
-			double bankHitRate = (bankTransactions > 0 && bankACT <= bankTransactions) ?
-			    (double)bankHits / (double)bankTransactions * 100.0 : 0.0;
-			PRINT( "        -RowBuffer ACT/Hits (Bank " << j << "): " << bankACT << " / " << bankHits << " (" << bankHitRate << "% hit)");
 		}
 
 		// factor of 1000 at the end is to account for the fact that totalEnergy is accumulated in mJ since IDD values are given in mA
@@ -1001,6 +983,7 @@ void MemoryController::printStats(bool finalStats)
 				csvOut.getOutputStream() << it->first <<"="<< it->second << endl;
 			}
 		}
+
 		if (currentClockCycle % EPOCH_LENGTH == 0)
 		{
 			PRINT( " --- Grand Total Bank usage list");
@@ -1052,33 +1035,3 @@ void MemoryController::insertHistogram(unsigned latencyValue, unsigned rank, uns
 	latencies[(latencyValue/HISTOGRAM_BIN_SIZE)*HISTOGRAM_BIN_SIZE]++;
 }
 
-// Row Buffer Hit/Miss statistics
-// Hit = Total Transactions - Misses (ACTIVATE count)
-uint64_t MemoryController::getTotalRowBufferHits()
-{
-	uint64_t misses = getTotalRowBufferMisses();
-	return (totalTransactions > misses) ? (totalTransactions - misses) : 0;
-}
-
-uint64_t MemoryController::getTotalRowBufferMisses()
-{
-	uint64_t total = 0;
-	for (size_t r = 0; r < NUM_RANKS; r++)
-		for (size_t b = 0; b < NUM_BANKS; b++)
-			total += commandQueue.getRowBufferMisses(r, b);
-	return total;
-}
-
-double MemoryController::getRowBufferHitRate()
-{
-	uint64_t misses = getTotalRowBufferMisses();
-	if (totalTransactions == 0) return 0.0;
-
-	// Handle edge case where misses > transactions
-	// This can happen due to REFRESH or TOTAL_ROW_ACCESSES forcing re-ACTIVATE
-	if (misses >= totalTransactions)
-		return 0.0;  // All accesses required ACTIVATE (worst case)
-
-	uint64_t hits = totalTransactions - misses;
-	return (double)hits / (double)totalTransactions * 100.0;
-}

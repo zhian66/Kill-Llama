@@ -69,11 +69,6 @@ public:
 	void printStats(bool finalStats = false);
 	void resetStats();
 
-	// Row Buffer statistics
-	uint64_t getTotalRowBufferHits();
-	uint64_t getTotalRowBufferMisses();
-	double getRowBufferHitRate();
-
 	//fields
 	vector<Transaction *> transactionQueue;
 private:

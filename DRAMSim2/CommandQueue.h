@@ -75,10 +75,8 @@ public:
 	void update(); //SimulatorObject requirement
 	vector<BusPacket *> &getCommandQueue(unsigned rank, unsigned bank);
 
-	// Row Buffer Hit/Miss statistics
-	uint64_t getRowBufferHits(unsigned rank, unsigned bank);
-	uint64_t getRowBufferMisses(unsigned rank, unsigned bank);
-	void resetRowBufferStats();
+	// Row Buffer Hit statistics
+	uint64_t getTotalRowBufferHits();  // Cumulative (never reset)
 
 	//fields
 	
@@ -101,9 +99,12 @@ private:
 
 	bool sendAct;
 
-	// Row Buffer Hit/Miss counters
-	vector<uint64_t> rowBufferHits;
-	vector<uint64_t> rowBufferMisses;
+	// Row Buffer Hit counter (cumulative, never reset)
+	uint64_t totalRowBufferHits;
+
+	// Priority-based scheduling
+	BusPacketType lastIssuedCommand;
+	int calculatePriority(BusPacket *pkt, unsigned currentRank, unsigned currentBank, size_t age);
 };
 }
 
