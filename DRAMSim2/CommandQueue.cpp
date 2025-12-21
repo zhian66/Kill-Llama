@@ -80,9 +80,8 @@ CommandQueue::CommandQueue(vector< vector<BankState> > &states, ostream &dramsim
 	//vector of counters used to ensure rows don't stay open too long
 	rowAccessCounters = vector< vector<unsigned> >(NUM_RANKS, vector<unsigned>(NUM_BANKS,0));
 
-	// Row Buffer Hit/Miss counters initialization
-	rowBufferHits = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
-	rowBufferMisses = vector<uint64_t>(NUM_RANKS * NUM_BANKS, 0);
+	// Row Buffer Hit counter initialization (cumulative, never reset)
+	totalRowBufferHits = 0;
 
 	// Priority-based scheduling initialization
 	lastIssuedCommand = READ;  // Default to READ
@@ -481,49 +480,29 @@ bool CommandQueue::pop(BusPacket **busPacket)
 						lastIssuedCommand = WRITE;
 					}
 
-					// Handle row buffer hit/miss tracking (same logic as round-robin)
+					// Remove command from queue
 					if (bestIndex > 0 && queue[bestIndex-1]->busPacketType == ACTIVATE &&
 					    queue[bestIndex-1]->bank == bestPacket->bank &&
 					    queue[bestIndex-1]->row == bestPacket->row)
 					{
-						// Row Buffer HIT - skip ACTIVATE
-						unsigned idx = bestPacket->rank * NUM_BANKS + bestPacket->bank;
-						rowBufferHits[idx]++;
-						rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
+						// Row Buffer HIT - row already open, skip ACTIVATE
+						totalRowBufferHits++;
 
 						if (DEBUG_ROWBUFFER)
 						{
-							uint64_t totalHits = 0;
-							for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
-								totalHits += rowBufferHits[h];
-							PRINT("  [ROW HIT #" << totalHits << " - ACT deleted] Rank=" << bestPacket->rank
+							PRINT("  [ROW HIT] Rank=" << bestPacket->rank
 							      << " Bank=" << bestPacket->bank
-							      << " Row=" << bestPacket->row);
+							      << " Row=" << bestPacket->row
+							      << " (Total=" << totalRowBufferHits << ")");
 						}
 
+						rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
 						delete (queue[bestIndex-1]);
 						queue.erase(queue.begin()+bestIndex-1, queue.begin()+bestIndex+1);
 					}
 					else
 					{
-						if (bestPacket->busPacketType == READ || bestPacket->busPacketType == READ_P ||
-						    bestPacket->busPacketType == WRITE || bestPacket->busPacketType == WRITE_P)
-						{
-							unsigned idx = bestPacket->rank * NUM_BANKS + bestPacket->bank;
-							rowBufferHits[idx]++;
-							rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
-
-							if (DEBUG_ROWBUFFER)
-							{
-								uint64_t totalHits = 0;
-								for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
-									totalHits += rowBufferHits[h];
-								PRINT("  [ROW HIT #" << totalHits << "] Rank=" << bestPacket->rank
-								      << " Bank=" << bestPacket->bank
-								      << " Row=" << bestPacket->row);
-							}
-						}
-
+						rowAccessCounters[bestPacket->rank][bestPacket->bank]++;
 						queue.erase(queue.begin()+bestIndex);
 					}
 
@@ -571,52 +550,26 @@ bool CommandQueue::pop(BusPacket **busPacket)
 									queue[i-1]->bank == packet->bank &&
 									queue[i-1]->row == packet->row)
 								{
-									// This is a Row Buffer HIT - the row is already open,
-									// so we skip the ACTIVATE and issue READ/WRITE directly
-									unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
-									rowBufferHits[idx]++;
-									rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
+									// Row Buffer HIT - row already open, skip ACTIVATE
+									totalRowBufferHits++;
 
 									if (DEBUG_ROWBUFFER)
 									{
-										uint64_t totalHits = 0;
-										for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
-											totalHits += rowBufferHits[h];
-										PRINT("  [ROW HIT #" << totalHits << " - ACT deleted] Rank=" << (*busPacket)->rank
-										      << " Bank=" << (*busPacket)->bank
-										      << " Row=" << (*busPacket)->row);
+										PRINT("  [ROW HIT] Rank=" << packet->rank
+										      << " Bank=" << packet->bank
+										      << " Row=" << packet->row
+										      << " (Total=" << totalRowBufferHits << ")");
 									}
 
+									rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
 									// i is being returned, but i-1 is being thrown away, so must delete it here
 									delete (queue[i-1]);
-
 									// remove both i-1 (the activate) and i (we've saved the pointer in *busPacket)
 									queue.erase(queue.begin()+i-1,queue.begin()+i+1);
 								}
 								else // there's no activate before this packet
 								{
-									// Only count as HIT if this is a READ/WRITE command
-									// ACTIVATE commands should NOT be counted as hits
-									if (packet->busPacketType == READ || packet->busPacketType == READ_P ||
-									    packet->busPacketType == WRITE || packet->busPacketType == WRITE_P)
-									{
-										// This is a Row Buffer HIT - READ/WRITE without preceding ACTIVATE
-										// The row is already open, no need to activate
-										unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
-										rowBufferHits[idx]++;
-										rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
-
-										if (DEBUG_ROWBUFFER)
-										{
-											uint64_t totalHits = 0;
-											for (size_t h = 0; h < NUM_RANKS * NUM_BANKS; h++)
-												totalHits += rowBufferHits[h];
-											PRINT("  [ROW HIT #" << totalHits << "] Rank=" << (*busPacket)->rank
-											      << " Bank=" << (*busPacket)->bank
-											      << " Row=" << (*busPacket)->row);
-										}
-									}
-
+									rowAccessCounters[(*busPacket)->rank][(*busPacket)->bank]++;
 									//remove the bus packet from queue
 									queue.erase(queue.begin()+i);
 								}
@@ -714,30 +667,12 @@ bool CommandQueue::pop(BusPacket **busPacket)
 		nextRankAndBank(nextRank, nextBank);
 	}
 
-	//if its an activate, add a tfaw counter and count as Row Buffer Miss
+	//if its an activate, add a tfaw counter
 	if ((*busPacket)->busPacketType==ACTIVATE)
 	{
-		// Row Buffer Miss - need to activate a new row
-		// Each ACTIVATE means a row miss (new row needs to be opened)
-		unsigned idx = (*busPacket)->rank * NUM_BANKS + (*busPacket)->bank;
-		rowBufferMisses[idx]++;
-
-		if (DEBUG_ROWBUFFER)
-		{
-			uint64_t totalMisses = 0;
-			for (size_t i = 0; i < NUM_RANKS * NUM_BANKS; i++)
-				totalMisses += rowBufferMisses[i];
-			PRINT("  [ROW MISS #" << totalMisses << "] Rank=" << (*busPacket)->rank
-			      << " Bank=" << (*busPacket)->bank
-			      << " Row=" << (*busPacket)->row
-			      << " Addr=0x" << hex << (*busPacket)->physicalAddress << dec);
-		}
-
 		if (!isSmartMRAM)
 		  tFAWCountdown[(*busPacket)->rank].push_back(tFAW);
 	}
-	// Note: Row Buffer Hits are counted in the open_page section above (lines 445-466)
-	// when a READ/WRITE is issued WITHOUT a preceding ACTIVATE in the queue
 
 	return true;
 }
@@ -965,24 +900,10 @@ void CommandQueue::update()
 	//TODO: make CommandQueue not a SimulatorObject
 }
 
-// Row Buffer Hit/Miss statistics getters
-uint64_t CommandQueue::getRowBufferHits(unsigned rank, unsigned bank)
+// Row Buffer Hit statistics getter (cumulative, never reset)
+uint64_t CommandQueue::getTotalRowBufferHits()
 {
-	return rowBufferHits[rank * NUM_BANKS + bank];
-}
-
-uint64_t CommandQueue::getRowBufferMisses(unsigned rank, unsigned bank)
-{
-	return rowBufferMisses[rank * NUM_BANKS + bank];
-}
-
-void CommandQueue::resetRowBufferStats()
-{
-	for (size_t i = 0; i < NUM_RANKS * NUM_BANKS; i++)
-	{
-		rowBufferHits[i] = 0;
-		rowBufferMisses[i] = 0;
-	}
+	return totalRowBufferHits;
 }
 
 // Priority-based scheduling helper

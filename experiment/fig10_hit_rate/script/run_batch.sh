@@ -66,7 +66,7 @@ TRACES=(
 )
 
 # Number of cycles to simulate (0 = run until trace ends)
-NUM_CYCLES=100000
+NUM_CYCLES=1000000
 
 # ============================================
 # Functions

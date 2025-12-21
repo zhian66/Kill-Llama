@@ -154,7 +154,9 @@ void MemoryController::attachRanks(vector<Rank *> *ranks)
 void MemoryController::update()
 {
 
-	//PRINT(" ------------------------- [" << currentClockCycle << "] -------------------------");
+	if (DEBUG_ROWBUFFER) {
+		PRINT(" ------------------------- [" << currentClockCycle << "] -------------------------");
+	}
 
 	//update bank states
 	for (size_t i=0;i<NUM_RANKS;i++)
@@ -175,7 +177,7 @@ void MemoryController::update()
 					case WRITE_P:
 					case READ_P:
 					// [SMART 修改整合]: 處理 Auto-Precharge
-							// SMART 沒有 Restore 過程，因此 Auto-Precharge 是瞬間完成的，直接回到 Idle。
+					// SMART 沒有 Restore 過程，因此 Auto-Precharge 是瞬間完成的，直接回到 Idle。
 						if (isSmartMRAM)
 							{
 							bankStates[i][j].currentBankState = Idle; // 直接 Idle
@@ -592,19 +594,19 @@ void MemoryController::update()
 
 
 
-			// If we have a read, save the transaction so we can return it later
+			commandQueue.enqueue(ACTcommand);
+			commandQueue.enqueue(command);
+
+			// If we have a read, save the transaction so when the data comes back
+			// in a bus packet, we can staple it back into a transaction and return it
 			if (transaction->transactionType == DATA_READ)
 			{
 				pendingReadTransactions.push_back(transaction);
 			}
-
-			commandQueue.enqueue(ACTcommand);
-			commandQueue.enqueue(command);
-
-			if (transaction->transactionType != DATA_READ)
+			else
 			{
 				// just delete the transaction now that it's a buspacket
-				delete transaction;
+				delete transaction; 
 			}
 			/* only allow one transaction to be scheduled per cycle -- this should
 			 * be a reasonable assumption considering how much logic would be
@@ -846,9 +848,6 @@ void MemoryController::resetStats()
 		totalReadsPerRank[i] = 0;
 		totalWritesPerRank[i] = 0;
 	}
-
-	// Reset Row Buffer statistics
-	commandQueue.resetRowBufferStats();
 }
 //prints statistics at the end of an epoch or  simulation
 void MemoryController::printStats(bool finalStats)
@@ -898,14 +897,12 @@ void MemoryController::printStats(bool finalStats)
 	PRINTN( "   Total Return Transactions : " << totalTransactions );
 	PRINT( " ("<<totalBytesTransferred <<" bytes) aggregate average bandwidth "<<totalBandwidth<<"GB/s");
 
-	// Row Buffer Statistics - Overall
-	uint64_t totalACT = getTotalRowBufferMisses();  // ACTIVATE count
-	uint64_t totalHits = getTotalRowBufferHits();
-	double hitRate = getRowBufferHitRate();
+	// Row Buffer Statistics
+	uint64_t totalHits = commandQueue.getTotalRowBufferHits();
+	double hitRate = (totalTransactions == 0) ? 0.0 : (double)totalHits / (double)totalTransactions * 100.0;
 
 	PRINT( "   ---- Row Buffer Statistics ----" );
 	PRINT( "   Row Buffer Hits           : " << totalHits );
-	PRINT( "   Row Buffer Misses         : " << totalACT );
 	PRINT( "   Row Buffer Hit Rate       : " << hitRate << "%" );
 
 	double totalAggregateBandwidth = 0.0;
@@ -920,14 +917,6 @@ void MemoryController::printStats(bool finalStats)
 		for (size_t j=0;j<NUM_BANKS;j++)
 		{
 			PRINT( "        -Bandwidth / Latency  (Bank " <<j<<"): " <<bandwidth[SEQUENTIAL(r,j)] << " GB/s\t\t" <<averageLatency[SEQUENTIAL(r,j)] << " ns");
-			// Per-Bank Row Buffer statistics
-			// ACT = ACTIVATE count, Hits = transactions - ACT (if ACT <= transactions)
-			uint64_t bankACT = commandQueue.getRowBufferMisses(r, j);
-			uint64_t bankTransactions = totalReadsPerBank[SEQUENTIAL(r,j)] + totalWritesPerBank[SEQUENTIAL(r,j)];
-			uint64_t bankHits = (bankTransactions > bankACT) ? (bankTransactions - bankACT) : 0;
-			double bankHitRate = (bankTransactions > 0 && bankACT <= bankTransactions) ?
-			    (double)bankHits / (double)bankTransactions * 100.0 : 0.0;
-			PRINT( "        -RowBuffer ACT/Hits (Bank " << j << "): " << bankACT << " / " << bankHits << " (" << bankHitRate << "% hit)");
 		}
 
 		// factor of 1000 at the end is to account for the fact that totalEnergy is accumulated in mJ since IDD values are given in mA
@@ -1046,32 +1035,3 @@ void MemoryController::insertHistogram(unsigned latencyValue, unsigned rank, uns
 	latencies[(latencyValue/HISTOGRAM_BIN_SIZE)*HISTOGRAM_BIN_SIZE]++;
 }
 
-// Row Buffer Hit/Miss statistics
-// Hit = READ/WRITE commands that hit open row (counted directly in CommandQueue)
-uint64_t MemoryController::getTotalRowBufferHits()
-{
-	uint64_t total = 0;
-	for (size_t r = 0; r < NUM_RANKS; r++)
-		for (size_t b = 0; b < NUM_BANKS; b++)
-			total += commandQueue.getRowBufferHits(r, b);
-	return total;
-}
-
-uint64_t MemoryController::getTotalRowBufferMisses()
-{
-	uint64_t total = 0;
-	for (size_t r = 0; r < NUM_RANKS; r++)
-		for (size_t b = 0; b < NUM_BANKS; b++)
-			total += commandQueue.getRowBufferMisses(r, b);
-	return total;
-}
-
-double MemoryController::getRowBufferHitRate()
-{
-	uint64_t hits = getTotalRowBufferHits();
-	uint64_t misses = getTotalRowBufferMisses();
-	uint64_t total = hits + misses;
-
-	if (total == 0) return 0.0;
-	return (double)hits / (double)total * 100.0;
-}
