@@ -5,6 +5,8 @@
 *.deppo
 *.po
 
+DRAMSim2
+
 # DRAMSim2 results
 DRAMSim2/results/
 
