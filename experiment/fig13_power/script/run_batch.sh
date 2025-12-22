@@ -14,7 +14,8 @@ set -e
 # Configuration
 # ============================================
 EXPERIMENT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-DRAMSIM_DIR="/home/ubuntu/sttmram/Kill-Llama/DRAMSim2"
+# DRAMSIM_DIR="/home/ubuntu/sttmram/Kill-Llama/DRAMSim2"
+DRAMSIM_DIR="/home/ubuntu/sttmram/Sim2/DRAMSim2"
 TRACE_BASE="/home/ubuntu/sttmram/Kill-Llama/benchmark/traces/trc"
 
 # System config
@@ -59,7 +60,7 @@ TRACES=(
 )
 
 # Number of cycles to simulate
-NUM_CYCLES=100000
+NUM_CYCLES=500000
 
 # ============================================
 # Functions

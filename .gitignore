@@ -4,6 +4,11 @@
 *.dep
 *.deppo
 *.po
+*.pyc
+*.so
+
+# DRAMSim2
+DRAMSim2
 
 # DRAMSim2 results
 DRAMSim2/results/
@@ -14,3 +19,35 @@ benchmark/traces/trc
 # Experiments results
 experiment/*/archive/
 experiment/*/trace_log/
+experiment/*/output/
+
+# MARSSx86 build artifacts
+marss.dramsim/ptlsim/build/
+marss.dramsim/qemu/*.o
+marss.dramsim/qemu/qemu-system-*
+marss.dramsim/qemu/qemu-img
+marss.dramsim/qemu/qemu-nbd
+marss.dramsim/qemu/config-host.*
+marss.dramsim/qemu/config.log
+marss.dramsim/qemu/trace.h
+
+# MARSSx86 VM images (use Git LFS for zip)
+marss.dramsim/ubuntu_12_04.qcow2
+marss.dramsim/*.qcow2
+
+# MARSSx86 simulation results
+marss.dramsim/results_*/
+marss.dramsim/*.log
+marss.dramsim/*.stats
+marss.dramsim/*.yml
+
+# SCons cache
+marss.dramsim/.sconsign.dblite
+marss.dramsim/.sconf_temp/
+
+# Editor/IDE
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
