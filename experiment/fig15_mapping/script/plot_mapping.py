@@ -40,12 +40,10 @@ import numpy as np
 # Expected ordering
 WORKLOADS_ORDER = ['mix1', 'mix2', 'mix3', 'mix4', 'mix5', 'mix6', 'mix7']
 
-CONFIGS_ORDER = ['DRAM', 'Conv-Delay', 'SMART']
+CONFIGS_ORDER = ['DRAM', 'Conv', 'SMART']
 CONFIG_FILE_MAPPING = {
     'DRAM': 'DRAM',
-    'Conv-Delay': 'Conv-Delay',
-    'Conv_Delay': 'Conv-Delay',
-    'ConvDelay': 'Conv-Delay',
+    'Conv': 'Conv-Delay',
     'SMART': 'SMART',
 }
 
@@ -65,8 +63,8 @@ SCHEME_ORDER = ['Ro:Ba:Bg:Co', 'Ro:Co:Ba:Bg']
 BAR_STYLES = {
     ('DRAM', 'Ro:Ba:Bg:Co'): {'color': 'white', 'edgecolor': 'black', 'hatch': ''},
     ('DRAM', 'Ro:Co:Ba:Bg'): {'color': 'gray', 'edgecolor': 'black', 'hatch': ''},
-    ('Conv-Delay', 'Ro:Ba:Bg:Co'): {'color': 'white', 'edgecolor': 'black', 'hatch': '...'},
-    ('Conv-Delay', 'Ro:Co:Ba:Bg'): {'color': 'white', 'edgecolor': 'black', 'hatch': '///'},
+    ('Conv', 'Ro:Ba:Bg:Co'): {'color': 'white', 'edgecolor': 'black', 'hatch': '...'},
+    ('Conv', 'Ro:Co:Ba:Bg'): {'color': 'white', 'edgecolor': 'black', 'hatch': '///'},
     ('SMART', 'Ro:Ba:Bg:Co'): {'color': 'black', 'edgecolor': 'black', 'hatch': ''},
     ('SMART', 'Ro:Co:Ba:Bg'): {'color': 'lightgray', 'edgecolor': 'black', 'hatch': ''},
 }
@@ -90,8 +88,8 @@ def parse_stats_file(filepath: str) -> Optional[float]:
         with open(filepath, 'r') as f:
             content = f.read()
 
-        # Find IPC under commit section
-        commit_pattern = r'commit:.*?ipc:\s*([\d.]+)'
+        # Find IPC under commit section (use negative lookbehind to avoid matching 'uipc')
+        commit_pattern = r'commit:.*?(?<!u)ipc:\s*([\d.]+)'
         match = re.search(commit_pattern, content, re.DOTALL)
 
         if match:
@@ -418,22 +416,29 @@ def generate_chart(normalized_ipc: Dict, normalized_energy: Dict,
 
 
 def main():
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    experiment_dir = os.path.dirname(script_dir)
+    default_stats_log = os.path.join(experiment_dir, 'stats')
+    default_trace_log = os.path.join(experiment_dir, 'trace_log')
+    default_output_dir = os.path.join(experiment_dir, 'output')
+
     parser = argparse.ArgumentParser(
         description='Generate Address Mapping Sensitivity chart (Figure 15)')
     parser.add_argument('--stats-dir', type=str,
-                        default=os.path.join(os.path.dirname(__file__), '..', '..', 'stats'),
+                        default=default_stats_log,
                         help='Directory containing .stats files (MARSSx86)')
     parser.add_argument('--log-dir', type=str,
-                        default=None,
+                        default=default_trace_log,
                         help='Directory containing .log files (DRAMSim2). Defaults to stats-dir')
     parser.add_argument('--output-dir', type=str,
-                        default=None,
+                        default=default_output_dir,
                         help='Output directory path (default: auto-generated timestamped folder)')
 
     args = parser.parse_args()
 
     # Resolve paths
     stats_dir = os.path.abspath(args.stats_dir)
+
     log_dir = os.path.abspath(args.log_dir) if args.log_dir else None
 
     if args.output_dir:
