@@ -1,0 +1,10 @@
+-run
+-stopinsns 10000000
+-stats /home/ubuntu/sttmram/Kill-Llama/experiment/results/DRAM_stream_triad_sch6_10M.stats
+-logfile /home/ubuntu/sttmram/Kill-Llama/experiment/results/DRAM_stream_triad_sch6_10M.log
+-dramsim-device-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/ini/Baseline_DRAM.ini
+-dramsim-system-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/system_sch6.ini
+-dramsim-results-dir-name /home/ubuntu/sttmram/Kill-Llama/experiment/results/DRAM_stream_triad_sch6_10M_logs
+-machine quad_core
+-kill-after-run
+-quiet

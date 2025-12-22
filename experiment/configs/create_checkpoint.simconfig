@@ -1,8 +1,7 @@
 -machine quad_core
 -dramsim-device-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/ini/Baseline_DRAM.ini
 -dramsim-system-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/system_sch6.ini
--dramsim-results-dir-name /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/results/results_smart
--logfile /home/ubuntu/sttmram/Kill-Llama/experiment/results/run_smart.log
+-dramsim-results-dir-name /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/results
+-logfile /dev/null
 -loglevel 0
--stopinsns 100000000
--kill-after-run
+-stopinsns 100
