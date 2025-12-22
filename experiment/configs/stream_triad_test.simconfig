@@ -1,0 +1,7 @@
+-dramsim-device-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/ini/Baseline_DRAM.ini
+-dramsim-system-ini-file /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/system_sch6.ini
+-dramsim-results-dir-name /home/ubuntu/sttmram/Kill-Llama/DRAMSim2/results/stream_triad_test
+-machine quad_core
+-logfile /home/ubuntu/sttmram/Kill-Llama/experiment/results/stream_triad_test.log
+-loglevel 0
+-stopinsns 1
