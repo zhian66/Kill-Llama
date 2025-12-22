@@ -119,16 +119,32 @@ def extract_config_name(filename: str) -> Optional[str]:
 
 
 def extract_benchmark_name(filename: str) -> Optional[str]:
-    """Extract benchmark name from log filename."""
+    """Extract benchmark name from log filename.
+
+    Supports formats:
+    - CONFIG_BENCHMARK_DATE.log (e.g., DRAM_stream_triad_1222.log)
+    - CONFIG_BENCHMARK.log (e.g., DRAM_stream_triad.log)
+    - CONFIG_BENCHMARK_cleaned.log (e.g., SMART_stream_triad_cleaned.log)
+    """
     name = os.path.basename(filename).replace('.log', '')
+
+    # Remove known suffixes
+    for suffix in ['_cleaned']:
+        if name.endswith(suffix):
+            name = name[:-len(suffix)]
+
     parts = name.split('_')
 
-    if len(parts) >= 3:
-        # Format: CONFIG_BENCHMARK_DATE.log
-        # Benchmark is everything between config and date
+    if len(parts) >= 2:
         config_part = parts[0]
         if config_part in CONFIG_MAPPING:
-            benchmark_parts = parts[1:-1]
+            # Check if last part is a date (4 digits like 1222)
+            if len(parts) >= 3 and parts[-1].isdigit() and len(parts[-1]) == 4:
+                # Format: CONFIG_BENCHMARK_DATE
+                benchmark_parts = parts[1:-1]
+            else:
+                # Format: CONFIG_BENCHMARK (no date suffix)
+                benchmark_parts = parts[1:]
             if benchmark_parts:
                 return '_'.join(benchmark_parts)
     return None
