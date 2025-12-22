@@ -94,12 +94,14 @@ def parse_log_file(filepath: str) -> Optional[PowerData]:
         refresh_matches = re.findall(r'-Refresh\s*\(watts\)\s*:\s*([\d.]+)', content)
 
         if avg_power_matches:
+            # Average all epochs instead of taking only the last value
+            n_epochs = len(avg_power_matches)
             return PowerData(
-                average_power=float(avg_power_matches[-1]),
-                background=float(background_matches[-1]) if background_matches else 0.0,
-                activation=float(actpre_matches[-1]) if actpre_matches else 0.0,
-                burst=float(burst_matches[-1]) if burst_matches else 0.0,
-                refresh=float(refresh_matches[-1]) if refresh_matches else 0.0,
+                average_power=sum(float(m) for m in avg_power_matches) / n_epochs,
+                background=sum(float(m) for m in background_matches) / n_epochs if background_matches else 0.0,
+                activation=sum(float(m) for m in actpre_matches) / n_epochs if actpre_matches else 0.0,
+                burst=sum(float(m) for m in burst_matches) / n_epochs if burst_matches else 0.0,
+                refresh=sum(float(m) for m in refresh_matches) / n_epochs if refresh_matches else 0.0,
             )
 
     except Exception as e:

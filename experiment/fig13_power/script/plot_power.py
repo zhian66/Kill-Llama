@@ -87,11 +87,13 @@ def parse_log_file(filepath: str) -> Optional[PowerData]:
         refresh_matches = re.findall(r'-Refresh\s*\(watts\)\s*:\s*([\d.]+)', content)
 
         if background_matches and actpre_matches and burst_matches and refresh_matches:
+            # Average all epochs instead of taking only the last value
+            n_epochs = len(background_matches)
             data = PowerData(
-                background=float(background_matches[-1]),
-                activation=float(actpre_matches[-1]),
-                burst=float(burst_matches[-1]),
-                refresh=float(refresh_matches[-1]),
+                background=sum(float(m) for m in background_matches) / n_epochs,
+                activation=sum(float(m) for m in actpre_matches) / n_epochs,
+                burst=sum(float(m) for m in burst_matches) / n_epochs,
+                refresh=sum(float(m) for m in refresh_matches) / n_epochs,
             )
 
             # Use the last hit rate value (cumulative result at end of simulation)
